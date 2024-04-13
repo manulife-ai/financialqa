@@ -1,10 +1,11 @@
-#!/usr/bin/python3
 import argparse
 import os
 from typing import Dict, List
 
 from azure.core.credentials import AzureKeyCredential
 from azure.ai.formrecognizer import DocumentAnalysisClient
+from azure.storage.blob import BlobServiceClient, BlobClient, ContainerClient
+
 import numpy as np
 import pandas as pd
 
@@ -16,13 +17,19 @@ pd.set_option('display.width', 500)
 
 load_dotenv() # load environment variables from .env (add to .gitignore) 
 
+def start_blob_client(azure_storage_connection_string, azure_storage_container_name):
+
+    blob_service_client = BlobServiceClient.from_connection_string(os.environ['AZURE_STORAGE_CONNECTION_STRING'])
+    container_client = blob_service_client.get_container_client(os.environ['AZURE_STORAGE_CONTAINER_NAME'])
+
+    return container_client
+
 def extract_blob_paths(container_client):
 
     list_of_blob_paths = []
     
     for i, blob in enumerate(container_client.list_blobs()):
-        path = "https://" + os.environ["AZURE_STORAGE_CONTAINER_ACCOUNT"] + \
-            ".blob.core.windows.net/" + os.environ['AZURE_STORAGE_CONTAINER_NAME'] + "/" + blob.name
+        path = "https://" + os.environ["AZURE_STORAGE_CONTAINER_ACCOUNT"] + ".blob.core.windows.net/" + os.environ['AZURE_STORAGE_CONTAINER_NAME'] + "/" + blob.name
         list_of_blob_paths.append(path)
     
     return list_of_blob_paths
@@ -33,6 +40,8 @@ def parse_pdfs(list_of_blob_paths: str) -> List[Dict[str, str]]:
 
     for blob_path in list_of_blob_paths:
 
+        # print(blob_path)
+        # continue
         endpoint = os.environ["DOCUMENT_ENDPOINT"]
         key = os.environ["DOCUMENT_KEY"]
         document_analysis_client = DocumentAnalysisClient(
@@ -50,7 +59,9 @@ def parse_pdfs(list_of_blob_paths: str) -> List[Dict[str, str]]:
         result = poller.result()
         # Returns a dict representation of AnalyzeResult.
         result_dict = result.to_dict()
-        result_dict['report_name'] = blob_path.split("/")[-1]
+        # result_dict['report_name'] = blob_path.split("/")[-1]
+        # print(result_dict.get('paragraphs'))
+        # print('')
         result_dicts.append(result_dict)
 
     return result_dicts
@@ -58,14 +69,17 @@ def parse_pdfs(list_of_blob_paths: str) -> List[Dict[str, str]]:
 
 def page_text_and_tables(result_dicts):
 
-    page_content = {}
     page_contents = []
 
     # for dict in result_dict:
     for result_dict in result_dicts:
 
+        page_content = {}
+        # print(result_dict.get('paragraphs')[0].get('content'))
         for i, paragraph in enumerate(result_dict.get('paragraphs')):
 
+            # print(paragraph.get('content')[0])
+            # break
             # print(paragraph.get('bounding_regions')[0].get('page_number'))
             # print(page_content.keys())
             if paragraph.get('bounding_regions')[0].get('page_number') in page_content.keys():
@@ -81,6 +95,7 @@ def page_text_and_tables(result_dicts):
                 # print(paragraph.get('bounding_regions')[0].get('page_number'))
                 # print(page_content.keys())
 
+        # print(page_content[1].get('text'))
         for idx, atable in enumerate(result_dict["tables"]):
 
             row_count = atable["row_count"]
@@ -110,23 +125,14 @@ def page_text_and_tables(result_dicts):
             # if idx == 1:
             #     return
             page_content[atable.get('bounding_regions')[0].get('page_number')].get('tables').append(df)
+            # page_content.get('tables_and_text')['report_name'] = result_dict['report_name']
             # tables.append(df)
 
+        # print(page_content[1].get('text'))
         page_contents.append(page_content)
+    
+    # print(page_contents[0].keys())
+    # print('')
+    # print(page_contents[1].keys())
 
     return page_contents
-
-def dedupe_text(page_content):
-
-    for i, report in enumerate(paged_text_and_tables):
-        num_pages = max(report.keys())
-        if i != 2:
-            continue
-        for page_num, tables_and_text in report.items():
-            for table in tables_and_text.get('tables'):
-                print(type(tables_and_text.get('text')))
-                print([tables_and_text.get('text') for text in tables_and_text.get('text') if text not in table.values])
-                print(tables_and_text.get('text') for text in tables_and_text.get('text') if text not in table.values)
-
-if __name__ == '__main__':
-    pass
