@@ -127,6 +127,9 @@ def page_text_and_tables(result_dicts):
             page_content[atable.get('bounding_regions')[0].get('page_number')].get('tables').append(df)
             # page_content.get('tables_and_text')['report_name'] = result_dict['report_name']
             # tables.append(df)
+            # tables_and_text.get('text')[:] = \
+            #     [text for text in tables_and_text.get('text') if text not in table.values]
+            dedupe_text_from_tables(atable.get('bounding_regions')[0].get('page_number'), page_content, df)
 
         # print(page_content[1].get('text'))
         page_contents.append(page_content)
@@ -136,3 +139,7 @@ def page_text_and_tables(result_dicts):
     # print(page_contents[1].keys())
 
     return page_contents
+
+def dedupe_text_from_tables(page_num, page_content, df):
+    page_content[page_num].get('text')[:] = \
+        [text for text in page_content[page_num].get('text') if text not in df.values]
