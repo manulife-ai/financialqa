@@ -106,7 +106,7 @@ def page_text_and_tables(result_dicts):
             # Handles complex headers
                 if aval["kind"] == "columnHeader":
                     arr[0][aval["column_index"]:aval["column_index"] +
-                        aval["column_span"]] += str(aval["content"])
+                        aval["column_span"]] += " " + str(aval["content"])
                 else:
                     # Add edge cases here (later modularize)
                     arr[aval["row_index"]][aval["column_index"]] = aval["content"]
