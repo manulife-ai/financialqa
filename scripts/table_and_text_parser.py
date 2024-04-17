@@ -16,6 +16,11 @@ pd.set_option('display.max_columns', 500)
 pd.set_option('display.width', 500)
 
 load_dotenv() # load environment variables from .env (add to .gitignore) 
+                
+'''
+To-do's:
+
+'''
 
 def start_blob_client(azure_storage_connection_string, azure_storage_container_name):
 
@@ -124,7 +129,11 @@ def page_text_and_tables(result_dicts):
             # print(df)
             # if idx == 1:
             #     return
-            page_content[atable.get('bounding_regions')[0].get('page_number')].get('tables').append(df)
+            if atable.get('bounding_regions')[0].get('page_number') not in page_content.keys():
+                page_content[atable.get('bounding_regions')[0].get('page_number')] = \
+                    {'tables': [df], 'text': []}
+            else:
+                page_content[atable.get('bounding_regions')[0].get('page_number')].get('tables').append(df)
             # page_content.get('tables_and_text')['report_name'] = result_dict['report_name']
             # tables.append(df)
             # tables_and_text.get('text')[:] = \
