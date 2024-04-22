@@ -49,16 +49,25 @@ To-do's:
 
 class IngestionPipeline:
 
-    def __init__(self, azure_storage_connection_string, azure_storage_container_name,
-                 azure_search_service_name, azure_search_index_name, azure_search_key,
-                 run_test_pdf=''):
-
-        self.azure_storage_connection_string = azure_storage_connection_string
-        self.azure_storage_container_name = azure_storage_container_name
-        self.azure_search_service_name = azure_search_service_name
-        self.azure_search_index_name = azure_search_index_name
-        self.azure_search_key = azure_search_key
+    # def __init__(self, azure_storage_connection_string, azure_storage_container_name,
+    #              azure_search_service_name, azure_search_index_name, azure_search_key,
+    #              run_test_case='')
+    def __init__(self, run_test_pdf=''):
+    
+        self.azure_storage_connection_string = os.environ['AZURE_STORAGE_CONNECTION_STRING']
+        self.azure_storage_container_name = os.environ['AZURE_STORAGE_CONTAINER_NAME']
+        self.azure_search_service_name = os.environ['AZURE_AI_SEARCH_SERVICE_NAME']
+        self.azure_search_index_name = os.environ['AZURE_AI_SEARCH_INDEX_NAME']
+        self.azure_search_key = os.environ['AZURE_AI_SEARCH_KEY']
         self.azure_search_endpoint = "https://" + self.azure_search_service_name + ".search.windows.net"
+
+        # self.azure_storage_connection_string = azure_storage_connection_string
+        # self.azure_storage_container_name = azure_storage_container_name
+        # self.azure_search_service_name = azure_search_service_name
+        # self.azure_search_index_name = azure_search_index_name
+        # self.azure_search_key = azure_search_key
+        # self.azure_search_endpoint = "https://" + self.azure_search_service_name + ".search.windows.net"
+
         self.run_test_pdf = run_test_pdf
 
     def get_blob_container_client(self, azure_storage_connection_string, azure_storage_container_name):
@@ -215,8 +224,7 @@ class IngestionPipeline:
         # return acs_vector_store
 
 
-    def ingest_pdfs(self, azure_storage_connection_string, azure_storage_container_name, create_new_index=True, 
-                    add_docs=False):
+    def ingest_pdfs(self, create_new_index=True, add_docs=False):
 
         '''
         Main driver code
@@ -286,14 +294,9 @@ if __name__ == '__main__':
 
     # args = arg_parser.parse_args()
 
-    ingestion_pipeline = IngestionPipeline(os.environ['AZURE_STORAGE_CONNECTION_STRING'],
-                                           os.environ['AZURE_STORAGE_CONTAINER_NAME'],
-                                           os.environ['AZURE_AI_SEARCH_SERVICE_NAME'],
-                                           os.environ['AZURE_AI_SEARCH_INDEX_NAME'],
-                                           os.environ['AZURE_AI_SEARCH_KEY'],
-                                           )
+    ingestion_pipeline = IngestionPipeline(run_test_pdf='MFC_QPR_2023_Q4_EN.pdf')
 
     # def __init__(self, azure_storage_connection_string, azure_storage_container_name,
     #              azure_search_service_name, azure_search_index_name, azure_search_key):
 
-    ingestion_pipeline.ingest_pdfs(os.environ['AZURE_STORAGE_CONNECTION_STRING'], os.environ['AZURE_STORAGE_CONTAINER_NAME'])
+    ingestion_pipeline.ingest_pdfs()
