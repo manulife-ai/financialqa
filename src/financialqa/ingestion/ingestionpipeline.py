@@ -50,7 +50,8 @@ To-do's:
 class IngestionPipeline:
 
     def __init__(self, azure_storage_connection_string, azure_storage_container_name,
-                 azure_search_service_name, azure_search_index_name, azure_search_key):
+                 azure_search_service_name, azure_search_index_name, azure_search_key,
+                 run_test_pdf=''):
 
         self.azure_storage_connection_string = azure_storage_connection_string
         self.azure_storage_container_name = azure_storage_container_name
@@ -58,6 +59,7 @@ class IngestionPipeline:
         self.azure_search_index_name = azure_search_index_name
         self.azure_search_key = azure_search_key
         self.azure_search_endpoint = "https://" + self.azure_search_service_name + ".search.windows.net"
+        self.run_test_pdf = run_test_pdf
 
     def get_blob_container_client(self, azure_storage_connection_string, azure_storage_container_name):
 
@@ -75,6 +77,9 @@ class IngestionPipeline:
         list_of_blob_paths = []
         
         for blob in container_client.list_blobs():
+            if self.run_test_pdf:
+                if blob.name != self.run_test_pdf:
+                    continue
             path = 'https://' + os.environ['AZURE_STORAGE_CONTAINER_ACCOUNT'] + \
                     '.blob.core.windows.net/' + \
                     os.environ['AZURE_STORAGE_CONTAINER_NAME'] + '/' + blob.name
@@ -82,14 +87,6 @@ class IngestionPipeline:
         
         return list_of_blob_paths
     
-
-    def preprocess_text(self, text):
-        text = helper.cleanup_whitespace(text)
-        text = helper.cleanup_multiple_underlines(text)
-        text = helper.cleanup_copyrights_characters(text)
-        text = helper.cleanup_escapechar(text)
-        return text
-
 
     def convert_pages_to_table_docs(self, paged_text_and_tables, metadata_page_span=1):
 
@@ -107,7 +104,7 @@ class IngestionPipeline:
                     # print('Length of deduplicated text:', len(tables_and_text.get('text')))
                     # print(tables_and_text.get('text'))
                     # return
-                    metadata = self.preprocess_text(' '.join(tables_and_text.get('text')))
+                    metadata = preprocess_text(' '.join(tables_and_text.get('text')))
                     lang_doc_tables.append(
                         Document(
                             page_content=table.to_string(),
@@ -121,6 +118,7 @@ class IngestionPipeline:
 
         return lang_doc_tables
     
+
     def chunk_docs(self, lang_doc_tables):
 
         # text_splitter = TokenTextSplitter(chunk_size=400, chunk_overlap=0)
@@ -151,6 +149,7 @@ class IngestionPipeline:
         embedding_model=embeddings.embed_query
         return embedding_model
 
+
     def index_docs(self, search_client, lang_doc_tables_chunks, embedding_model, create_new_index=False, add_docs=False):
 
         try:
@@ -166,29 +165,29 @@ class IngestionPipeline:
         finally:
             # default field names see https://python.langchain.com/docs/integrations/vectorstores/azuresearch/
             fields = [
-            SimpleField(
-            name="id",
-            type=SearchFieldDataType.String,
-            key=True,
-            filterable=True,
-            ),
-            SearchableField(
-            name="content",
-            type=SearchFieldDataType.String,
-            searchable=True,
-            ),
-            SearchField(
-            name="content_vector",
-            type=SearchFieldDataType.Collection(SearchFieldDataType.Single),
-            searchable=True,
-            vector_search_dimensions=len(embedding_model("Text")),
-            vector_search_configuration="default", ##the "default" option is explained below
-            ),
-            SearchableField(
-            name="metadata",
-            type=SearchFieldDataType.String,
-            searchable=True,
-            filterable=True,),
+                SimpleField(
+                name="id",
+                type=SearchFieldDataType.String,
+                key=True,
+                filterable=True,
+                ),
+                SearchableField(
+                name="content",
+                type=SearchFieldDataType.String,
+                searchable=True,
+                ),
+                SearchField(
+                name="content_vector",
+                type=SearchFieldDataType.Collection(SearchFieldDataType.Single),
+                searchable=True,
+                vector_search_dimensions=len(embedding_model("Text")),
+                vector_search_configuration="default",
+                ),
+                SearchableField(
+                name="metadata",
+                type=SearchFieldDataType.String,
+                searchable=True,
+                filterable=True,),
             ]
 
             if create_new_index:
