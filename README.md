@@ -1,5 +1,5 @@
-# Financial Report pdf Indexer
-This package provides functionality to parse, chunk, and index the tables and text from (financial report) pdfs into an Azure AI Search vector database for use in a Retrieval Augmented Generation question-answering framework for (financial data) tabular understanding.
+# Financial Report pdf Question-Answering Indexer
+This package provides functionality to parse, chunk, and index the tables and text from (financial report) pdfs into an Azure AI Search vector database for use in a Retrieval Augmented Generation (RAG) question-answering (QA) framework for (financial data) tabular understanding.
 
 ## Features
 
@@ -8,35 +8,67 @@ The features that come included in this package are:
 * Effective parsing of tables and text in pdfs using AI Document Intelligence services and storing them as a nested dictionary of the form:
 ```python
 parsed_table = {page_num: {'text': [extracted_text], 'tables': [extracted_tables]}
-``` 
-* Attaches metadata to the extracted tables based on surrounding text in the same page and then chunks whole tables stored as DataFrame objects using langchain tools
-* Ingests the chunked tables into the Azure AI Search vector store.
+```
+* Attaches metadata to the extracted tables stored as `pandas.DataFrame` objects based on surrounding text on the same page and chunks whole tables using `langchain` functionality
+* Ingests the chunked tables into the Azure AI Search vector store
 
-## How To Use
+## Installation and Usage
 
-First, you will need to setup the necessary configuration variables required to access the services used in this package, namely:
+The following services are used in this package:
 
+* Azure Storage Container
 * Azure AI Document Intelligence
 * Azure AI Search
-* Azure Storage Container
-* OpenAI API
+* Azure OpenAI Studio
 
-Please fill the required environment variables in the `template.env` file and then rename and save the file as `.env` so that it can be found by the `dotenv` package at runtime. __Note that the pdfs are assumed to be located in an Azure Blob Storage container__, the details of which are provided in  ```template.env```, namely the container account name, container name, and the storage connection string.
+__Note that the pdfs are assumed to be stored in an Azure Blob Storage container__.
 
-To install the current release, from  your command line:
+Fill the required environment variables for the used services in a file named `.env` in your working directory so that it can be discovered by the `dotenv` package at runtime and loaded. The required environment variables are:
 
 ```bash
-$ pip install financial-pdf-indexer
+AZURE_STORAGE_CONTAINER_NAME=""
+AZURE_STORAGE_CONTAINER_ACCOUNT=""
+AZURE_STORAGE_CONNECTION_STRING=""
+
+DOCUMENT_ENDPOINT=""
+DOCUMENT_KEY=""
+
+AZURE_AI_SEARCH_SERVICE_NAME=""
+AZURE_AI_SEARCH_INDEX_NAME=""
+AZURE_AI_SEARCH_KEY=""
+
+OPENAI_API_BASE=""
+OPENAI_API_KEY=""
+OPENAI_API_VERSION=""
+OPENAI_API_TYPE=""
 ```
-Then, you can run it directly from the command line:
+
+__(coming soon...)__ Then, run the following to install the current release from the command line:
 ```bash
-python3 -m ingestionpipeline
+$ pip install financialqa
 ```
-or you can import the package as a module and use it directly in your code:
+The package can then be imported and used in a script:
 ```python
 import financialqa
+from financialqa.ingestion.ingestionpipeline import IngestionPipeline
+
+from dotenv import load_dotenv
+load_dotenv()  # load environment variables
+
+# Run a single test pdf through the ingestion pipeline
+ingestion_pipeline = IngestionPipeline(run_test_pdf='MFC_QPR_2023_Q4_EN.pdf')
+
+# Parse, chunk, and index extracted tables into Azure AI Search 
+ingestion_pipeline.ingest_pdfs() 
+```
+Or run directly from the command line:
+
+```bash
+$ python3 -m financialqa.ingestion.ingestionpipeline
 ```
 
 # To-do's
-* Fix module imports
-* Include exception handling for invalid environment variables
+* Specify dependencies
+* Include more test cases
+* Include exception handling
+* Upload final copy to Python Package Index
