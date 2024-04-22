@@ -15,9 +15,12 @@ setup(
         author_email="Messiah_Ataey@manulife.com",
         description=DESCRIPTION,
         long_description=LONG_DESCRIPTION,
-        packages=find_packages(),
+        # packages=find_packages(),
         install_requires=[], # add any additional packages that 
         # needs to be installed along with your package. Eg: 'caer'
+
+        packages=find_packages('financialqa'),
+        package_dir={'': 'src'},
 
         keywords=['python', 'first package'],
         classifiers= [

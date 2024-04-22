@@ -22,10 +22,11 @@ from azure.search.documents.indexes.models import (
     TextWeights,
 )
 
-import helper
 
+from .helper import *
 # from financial_qabot_table_reader.src.table2json_copy import extract_tables
-from parser import parse_pdfs, page_text_and_tables
+from .parser import parse_pdfs, page_text_and_tables
+# from parser import parse_pdfs, page_text_and_tables
 
 from dotenv import load_dotenv
 load_dotenv() # load environment variables from .env
