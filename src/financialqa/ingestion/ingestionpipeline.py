@@ -70,7 +70,7 @@ class IngestionPipeline:
 
         self.run_test_pdf = run_test_pdf
 
-    def get_blob_container_client(self, azure_storage_connection_string, azure_storage_container_name):
+    def get_blob_container_client(self):
 
         blob_service_client = \
             BlobServiceClient.from_connection_string(self.azure_storage_connection_string)
@@ -137,7 +137,7 @@ class IngestionPipeline:
         return lang_doc_tables_chunks
     
 
-    def get_search_client(self, azure_search_endpoint):
+    def get_search_client(self):
 
         azure_search_endpoint = "https://" + self.azure_search_service_name + ".search.windows.net"
         search_client = SearchIndexClient(azure_search_endpoint,
@@ -163,14 +163,17 @@ class IngestionPipeline:
 
         try:
             search_client.get_index(os.environ['AZURE_AI_SEARCH_INDEX_NAME'])
+
         except:
             print('No existing index with name', os.environ['AZURE_AI_SEARCH_INDEX_NAME'], \
                     'in search service', os.environ['AZURE_AI_SEARCH_SERVICE_NAME'])
             index_exists = 0
+
         else:
             print('Existing index', os.environ['AZURE_AI_SEARCH_INDEX_NAME'], 'in search service', \
                     os.environ['AZURE_AI_SEARCH_SERVICE_NAME'])
             index_exists = 1
+
         finally:
             # default field names see https://python.langchain.com/docs/integrations/vectorstores/azuresearch/
             fields = [
@@ -230,28 +233,26 @@ class IngestionPipeline:
         Main driver code
         '''
 
-        print('Getting blob container client....')
-        container_client = self.get_blob_container_client(
-            self.azure_storage_connection_string, 
-            self.azure_storage_container_name)
+        print('Getting blob container client...')
+        container_client = self.get_blob_container_client()
 
-        print('Extracting blob paths....')
+        print('Extracting blob paths...')
         blob_paths = self.extract_blob_paths(container_client)
         
-        print('Parsing pdfs....')
+        print('Parsing pdfs...')
         result_dicts = parse_pdfs(blob_paths)
 
-        print('Paging text and tables....')
+        print('Paging text and tables...')
         paged_text_and_tables = page_text_and_tables(result_dicts)
 
-        print('Converting pages to table docs....')
+        print('Converting pages to table docs...')
         lang_doc_tables = self.convert_pages_to_table_docs(paged_text_and_tables)
 
-        print('Chunking table docs....')
+        print('Chunking table docs...')
         lang_doc_tables_chunks = self.chunk_docs(lang_doc_tables)
 
-        print('Getting Azure AI Search client....')
-        search_client = self.get_search_client(self.azure_search_endpoint)
+        print('Getting Azure AI Search client...')
+        search_client = self.get_search_client()
 
         print('Getting embedding model...')
         embedding_model = self.get_embedding_model()
