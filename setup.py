@@ -1,28 +1,26 @@
 from setuptools import setup, find_packages
 
-VERSION = '0.0.1' 
-DESCRIPTION = 'Financial QABot pdf parser and ingestion pipeline'
-LONG_DESCRIPTION = '''Parses text and tables from financial reports and ingests
-                    them into an Azure Search index for Financial 
-                    Question-Answering using Retrieval Augmented Generation'''
+VERSION = "0.0.1" 
+DESCRIPTION = "Financial Report PDF Table Indexer"
+LONG_DESCRIPTION = """
+    Parse, chunk, and index the tables and text from 
+    (financial report) PDF files into an Azure AI Search vector 
+    database for (financial data) tabular question-answering (QA) with
+    an LLM in a Retrieval Augmented Generation (RAG) framework.
+    """
 
-# Setting up
 setup(
-        # the name must match the folder name 'verysimplemodule'
         name="financialqa", 
         version=VERSION,
         author="Messiah Ataey",
         author_email="Messiah_Ataey@manulife.com",
         description=DESCRIPTION,
         long_description=LONG_DESCRIPTION,
+        install_requires=[
+            ],
         # packages=find_packages(),
-        install_requires=[], # add any additional packages that 
-        # needs to be installed along with your package. Eg: 'caer'
-
-        packages=find_packages('financialqa'),
-        package_dir={'': 'src'},
-
-        keywords=['python', 'first package'],
+        package_dir={"": "src"},
+        keywords=["python", "pdf parser", "pdf_indexer"],
         classifiers= [
             "Development Status :: 3 - Alpha",
             "Intended Audience :: Education",
