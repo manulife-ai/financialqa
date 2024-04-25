@@ -1,5 +1,6 @@
-# Financial Report pdf Question-Answering Indexer
-This package provides functionality to parse, chunk, and index the tables and text from (financial report) pdfs into an Azure AI Search vector database for use in a Retrieval Augmented Generation (RAG) question-answering (QA) framework for (financial data) tabular understanding.
+# Financial Report PDF Table Indexer
+This package provides functionality to parse, chunk, and index the tables and text from (financial report) PDF files into an Azure AI Search vector database for (financial data) tabular question-answering (QA) with an LLM
+in a Retrieval Augmented Generation (RAG) framework.
 
 ## Features
 
@@ -58,9 +59,10 @@ load_dotenv()  # load environment variables
 # Run a single test pdf through the ingestion pipeline
 ingestion_pipeline = IngestionPipeline(run_test_pdf='MFC_QPR_2023_Q4_EN.pdf')
 
-# Parse, chunk, and index extracted tables into Azure AI Search 
+# Parse, chunk, and index extracted tables into Azure AI Search at once
 ingestion_pipeline.ingest_pdfs() 
 ```
+
 Or run directly from the command line:
 
 ```bash
@@ -68,7 +70,11 @@ $ python3 -m financialqa.ingestion.ingestionpipeline
 ```
 
 # To-do's
-* Specify dependencies
+* Apply PEP 8 style guide
+* Attach more report metadata to ingested tables
+* Include method and class docstrings
+* Specify install_packages dependencies in setup
 * Include more test cases
-* Include exception handling
+* Improve logging
+* Include exception handling for API calls
 * Upload final copy to Python Package Index
