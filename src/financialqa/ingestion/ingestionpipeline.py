@@ -1,7 +1,13 @@
 import os
 import sys
-sys.path.append('..')
+# sys.path.append('..')
 import argparse
+import logging
+logging.basicConfig(    
+    # filename=logfile,    
+    level=logging.DEBUG,    
+    format="%(asctime)s %(levelname)s %(name)s line %(lineno)d  %(message)s",    
+    datefmt="%H:%M:%S")   
 
 import openai
 from langchain.docstore.document import Document
@@ -22,36 +28,25 @@ from azure.search.documents.indexes.models import (
     TextWeights,
 )
 
-
-from .helper import *
-# from financial_qabot_table_reader.src.table2json_copy import extract_tables
+from .helper import preprocess_text
 from .parser import parse_pdfs, page_text_and_tables
-# from parser import parse_pdfs, page_text_and_tables
 
 from dotenv import load_dotenv
-load_dotenv() # load environment variables from .env
+load_dotenv(override=True)
 
-# openai.api_type='azure'
-# openai.api_version='2023-05-15'
-# openai.api_base='https://use-gaa-openai-test1.openai.azure.com/'
-# openai.api_key=os.getenv('OPENAI_API_KEY')
-
-import warnings # not recommended, to suppress langchain openai error
+import warnings  # not recommended, to suppress langchain openai error
 warnings.filterwarnings("ignore")
 
 '''
 To-do's:
-
-- How to call pip package with arguments from bash?
-- Add add_docs option for index_docs()
-- Fix langchain OpenAI error
+- Configure and add logging
+- Add option to add documents to index_docs()
+- Address langchain OpenAI error
 '''
 
 class IngestionPipeline:
 
-    # def __init__(self, azure_storage_connection_string, azure_storage_container_name,
-    #              azure_search_service_name, azure_search_index_name, azure_search_key,
-    #              run_test_case='')
+
     def __init__(self, run_test_pdf=''):
     
         self.azure_storage_connection_string = os.environ['AZURE_STORAGE_CONNECTION_STRING']
@@ -61,17 +56,13 @@ class IngestionPipeline:
         self.azure_search_key = os.environ['AZURE_AI_SEARCH_KEY']
         self.azure_search_endpoint = "https://" + self.azure_search_service_name + ".search.windows.net"
 
-        # self.azure_storage_connection_string = azure_storage_connection_string
-        # self.azure_storage_container_name = azure_storage_container_name
-        # self.azure_search_service_name = azure_search_service_name
-        # self.azure_search_index_name = azure_search_index_name
-        # self.azure_search_key = azure_search_key
-        # self.azure_search_endpoint = "https://" + self.azure_search_service_name + ".search.windows.net"
-
         self.run_test_pdf = run_test_pdf
+        
+        self.logger = logging.getLogger(__name__)
 
     def get_blob_container_client(self):
 
+        self.logger.info('Getting Azure Storage blob container client...')
         blob_service_client = \
             BlobServiceClient.from_connection_string(self.azure_storage_connection_string)
         
@@ -84,15 +75,17 @@ class IngestionPipeline:
     def extract_blob_paths(self, container_client):
 
         list_of_blob_paths = []
-        
+        self.logger.info('Extracting blob paths...')
+        logging.disable(logging.WARNING)
         for blob in container_client.list_blobs():
             if self.run_test_pdf:
                 if blob.name != self.run_test_pdf:
                     continue
-            path = 'https://' + os.environ['AZURE_STORAGE_CONTAINER_ACCOUNT'] + \
-                    '.blob.core.windows.net/' + \
-                    os.environ['AZURE_STORAGE_CONTAINER_NAME'] + '/' + blob.name
+            path = 'https://' + os.environ['AZURE_STORAGE_CONTAINER_ACCOUNT'] \
+                     + '.blob.core.windows.net/' + os.environ['AZURE_STORAGE_CONTAINER_NAME'] \
+                     + '/' + blob.name
             list_of_blob_paths.append(path)
+        logging.disable(logging.NOTSET)
         
         return list_of_blob_paths
     
@@ -100,19 +93,11 @@ class IngestionPipeline:
     def convert_pages_to_table_docs(self, paged_text_and_tables, metadata_page_span=1):
 
         lang_doc_tables = []
+        self.logger.info('Converting pages to table documents...')
         for i, report in enumerate(paged_text_and_tables):
             num_pages = max(list(report.keys()))
             for page_num, tables_and_text in report.items():
                 for table in tables_and_text.get('tables'):
-                    # print(table, '\n')
-                    # continue
-                    # print('Length of original text:', len(tables_and_text.get('text')))
-                    # print(tables_and_text.get('text'), '\n')
-                    # tables_and_text.get('text')[:] = \
-                    #     [text for text in tables_and_text.get('text') if text not in table.values]
-                    # print('Length of deduplicated text:', len(tables_and_text.get('text')))
-                    # print(tables_and_text.get('text'))
-                    # return
                     metadata = preprocess_text(' '.join(tables_and_text.get('text')))
                     lang_doc_tables.append(
                         Document(
@@ -130,6 +115,7 @@ class IngestionPipeline:
 
     def chunk_docs(self, lang_doc_tables):
 
+        self.logger.info('Chunking documents...')
         # text_splitter = TokenTextSplitter(chunk_size=400, chunk_overlap=0)
         text_splitter = CharacterTextSplitter(chunk_size=400, chunk_overlap=0)
         lang_doc_tables_chunks = text_splitter.split_documents(lang_doc_tables)
@@ -139,6 +125,7 @@ class IngestionPipeline:
 
     def get_search_client(self):
 
+        self.logger.info('Getting search client...')
         azure_search_endpoint = "https://" + self.azure_search_service_name + ".search.windows.net"
         search_client = SearchIndexClient(azure_search_endpoint,
                                  AzureKeyCredential(self.azure_search_key))
@@ -146,6 +133,8 @@ class IngestionPipeline:
 
     
     def get_embedding_model(self):
+
+        self.logger.info('Getting OpenAI embedding model...')
         embeddings = OpenAIEmbeddings(
             deployment='text-embedding-ada-002-v2',
             openai_api_base=os.environ['OPENAI_API_BASE'],
@@ -161,17 +150,30 @@ class IngestionPipeline:
 
     def index_docs(self, search_client, lang_doc_tables_chunks, embedding_model, create_new_index=False, add_docs=False):
 
+        self.logger.info('Uploading documents to Azure AI Search index...')
         try:
+            logging.disable(logging.WARNING)
             search_client.get_index(os.environ['AZURE_AI_SEARCH_INDEX_NAME'])
+            logging.disable(logging.NOTSET)
 
         except:
-            print('No existing index with name', os.environ['AZURE_AI_SEARCH_INDEX_NAME'], \
-                    'in search service', os.environ['AZURE_AI_SEARCH_SERVICE_NAME'])
+            self.logger.info(
+                ' '.join([
+                    'No existing index with name', os.environ['AZURE_AI_SEARCH_INDEX_NAME'], \
+                    'in search service', os.environ['AZURE_AI_SEARCH_SERVICE_NAME']])
+                )
+            #  print('No existing index with name', os.environ['AZURE_AI_SEARCH_INDEX_NAME'], \
+            #         'in search service', os.environ['AZURE_AI_SEARCH_SERVICE_NAME'])
             index_exists = 0
 
         else:
-            print('Existing index', os.environ['AZURE_AI_SEARCH_INDEX_NAME'], 'in search service', \
-                    os.environ['AZURE_AI_SEARCH_SERVICE_NAME'])
+            self.logger.info(
+                ' '.join([
+                'Existing index', os.environ['AZURE_AI_SEARCH_INDEX_NAME'], 
+                'in search service', os.environ['AZURE_AI_SEARCH_SERVICE_NAME']])
+            )
+            # print('Existing index', os.environ['AZURE_AI_SEARCH_INDEX_NAME'], 'in search service', \
+            #         os.environ['AZURE_AI_SEARCH_SERVICE_NAME'])
             index_exists = 1
 
         finally:
@@ -223,6 +225,7 @@ class IngestionPipeline:
                 acs_vector_store.add_documents(documents=lang_doc_tables_chunks)
                 print(len(lang_doc_tables_chunks), 'documents successfully indexed in', \
                         round(time.time() - t), 'seconds')
+        logging.disable(logging.NOTSET)
 
         # return acs_vector_store
 
@@ -230,34 +233,21 @@ class IngestionPipeline:
     def ingest_pdfs(self, create_new_index=True, add_docs=False):
 
         '''
-        Main driver code
+        Run end-to-end pipeline in one method
         '''
 
-        print('Getting blob container client...')
         container_client = self.get_blob_container_client()
-
-        print('Extracting blob paths...')
         blob_paths = self.extract_blob_paths(container_client)
-        
-        print('Parsing pdfs...')
         result_dicts = parse_pdfs(blob_paths)
-
-        print('Paging text and tables...')
         paged_text_and_tables = page_text_and_tables(result_dicts)
-
-        print('Converting pages to table docs...')
         lang_doc_tables = self.convert_pages_to_table_docs(paged_text_and_tables)
-
-        print('Chunking table docs...')
         lang_doc_tables_chunks = self.chunk_docs(lang_doc_tables)
-
-        print('Getting Azure AI Search client...')
         search_client = self.get_search_client()
-
-        print('Getting embedding model...')
         embedding_model = self.get_embedding_model()
-
-        self.index_docs(search_client, lang_doc_tables_chunks, embedding_model, create_new_index=True, add_docs=False)
+        self.index_docs(
+            search_client, lang_doc_tables_chunks, embedding_model,
+            create_new_index=True, add_docs=False
+            )
 
 
 if __name__ == '__main__':

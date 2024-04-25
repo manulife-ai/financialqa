@@ -1,6 +1,12 @@
 import os
 import sys
 sys.path.append('..')
+import logging
+logging.basicConfig(    
+        # filename=logfile,    
+        level=logging.INFO,    
+        format="%(asctime)s %(levelname)s %(name)s line %(lineno)d  %(message)s",    
+        datefmt="%H:%M:%S")   
 
 import argparse
 from typing import Dict, List
@@ -10,11 +16,13 @@ from azure.ai.formrecognizer import DocumentAnalysisClient
 import numpy as np
 import pandas as pd
 
+logger = logging.getLogger(__name__)
 
 def parse_pdfs(list_of_blob_paths: str) -> List[Dict[str, str]]:
 
     result_dicts = []
-
+    logger.info('Parsing PDFs...')
+    logging.disable(logging.WARNING)
     for blob_path in list_of_blob_paths:
 
         endpoint = os.environ['DOCUMENT_ENDPOINT']
@@ -33,8 +41,8 @@ def parse_pdfs(list_of_blob_paths: str) -> List[Dict[str, str]]:
 
         result = poller.result()
         result_dict = result.to_dict() # Returns a dict representation of AnalyzeResult.
-        result_dicts.append(result_dict)
-
+    logging.disable(logging.NOTSET)
+    
     return result_dicts
 
 
@@ -79,14 +87,14 @@ def page_text_and_tables(result_dicts):
             else:
                 page_content[page_num].get('tables').append(df)
 
-            dedupe_text_from_tables(page_num, page_content, df)
+            _dedupe_text_from_tables(page_num, page_content, df)
 
         page_contents.append(page_content)
     
     return page_contents
 
 
-def dedupe_text_from_tables(page_num, page_content, df):
+def _dedupe_text_from_tables(page_num, page_content, df):
     
     page_content[page_num].get('text')[:] = \
         [text for text in page_content[page_num].get('text') if text not in df.values]
