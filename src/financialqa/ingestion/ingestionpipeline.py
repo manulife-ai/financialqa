@@ -70,22 +70,31 @@ class IngestionPipeline:
         return container_client
 
 
-    def extract_blob_paths(self, container_client):
+    def extract_report_contents(self, container_client):
         """Extract blob paths from Azure Blob Storage container."""
-        list_of_blob_paths = []
-        self.logger.info('Extracting blob paths...')
+        # list_of_blob_paths = []
+        report_contents = {}
+        self.logger.info('Extracting report contents...')
         logging.disable(logging.WARNING)
         for blob in container_client.list_blobs():
             if self.run_test_pdf:
                 if blob.name != self.run_test_pdf:
                     continue
-            path = 'https://' + os.environ['AZURE_STORAGE_CONTAINER_ACCOUNT'] \
-                     + '.blob.core.windows.net/' + os.environ['AZURE_STORAGE_CONTAINER_NAME'] \
-                     + '/' + blob.name
-            list_of_blob_paths.append(path)
+            report_name = blob.name
+            report_blob_path = 'https://' + os.environ['AZURE_STORAGE_CONTAINER_ACCOUNT'] \
+                                + '.blob.core.windows.net/' + os.environ['AZURE_STORAGE_CONTAINER_NAME'] \
+                                + '/' + report_name
+            name_contents = report_name.split('_')
+            company_name = name_contents[0]
+            report_quarter = name_contents[-1].replace('.pdf', '')
+            report_contents[report_name] = {
+                'company_name': company_name, 
+                'report_quarter': report_quarter,
+                'report_blob_path': report_blob_path,
+                }
         logging.disable(logging.NOTSET)
         
-        return list_of_blob_paths
+        return report_contents
     
 
     def convert_pages_to_table_docs(self, paged_text_and_tables, metadata_page_span=1):

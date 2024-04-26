@@ -16,33 +16,36 @@ import pandas as pd
 
 logger = logging.getLogger(__name__)
 
-def parse_pdfs(list_of_blob_paths: str) -> List[Dict[str, str]]:
+def parse_pdfs(report_contents) -> List[Dict[str, str]]:
     """Parse PDF files from Azure Blob Storage container using Azure Document Intellignece."""
     result_dicts = []
     logger.info('Parsing PDFs...')
     logging.disable(logging.WARNING)
 
-    for blob_path in list_of_blob_paths:
+    for report_name, report_content in report_contents.items():
         endpoint = os.environ['DOCUMENT_ENDPOINT']
         key = os.environ['DOCUMENT_KEY']
         document_analysis_client = DocumentAnalysisClient(
             endpoint=endpoint, credential=AzureKeyCredential(key)
             )
+        report_blob_path = report_content.get('report_blob_path')
 
-        if blob_path.startswith('http'):
+        if report_blob_path.startswith('http'):
             poller = document_analysis_client.begin_analyze_document_from_url(
-                'prebuilt-layout', blob_path)
+                'prebuilt-layout', report_blob_path)
         else:
-            with open(blob_path, 'rb') as f:
+            with open(report_blob_path, 'rb') as f:
                 poller = document_analysis_client.begin_analyze_document(
                     'prebuilt-layout', document=f)
-
         result = poller.result()
         result_dict = result.to_dict() # Returns a dict representation of AnalyzeResult.
+        result_dict['report_name'] = report_name
+        result_dict['company_name'] = report_contents.get('company_name')
+        result_dict['report_quarter'] = report_contents.get('report_quarter')
+        result_dict['report_blob_path'] = report_contents.get('report_blob_path')
+        result_dicts.append(result_dict)
     logging.disable(logging.NOTSET)
-    
     return result_dicts
-
 
 def page_text_and_tables(result_dicts):
     """Store extracted text and tables as values into a nested dictionary based on page number keys."""
