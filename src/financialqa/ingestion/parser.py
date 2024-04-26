@@ -40,9 +40,9 @@ def parse_pdfs(report_contents) -> List[Dict[str, str]]:
         result = poller.result()
         result_dict = result.to_dict() # Returns a dict representation of AnalyzeResult.
         result_dict['report_name'] = report_name
-        result_dict['company_name'] = report_contents.get('company_name')
-        result_dict['report_quarter'] = report_contents.get('report_quarter')
-        result_dict['report_blob_path'] = report_contents.get('report_blob_path')
+        result_dict['company_name'] = report_content.get('company_name')
+        result_dict['report_quarter'] = report_content.get('report_quarter')
+        result_dict['report_blob_path'] = report_content.get('report_blob_path')
         result_dicts.append(result_dict)
     logging.disable(logging.NOTSET)
     return result_dicts
@@ -52,15 +52,15 @@ def page_text_and_tables(result_dicts):
     page_contents = []
 
     for result_dict in result_dicts:
-        page_content = {}
+        page_content = {'pages': {}}
 
         for paragraph in result_dict.get('paragraphs'):
             page_num = paragraph.get('bounding_regions')[0].get('page_number')
 
-            if page_num in page_content.keys():
-                page_content[page_num].get('text').append(paragraph.get('content'))
+            if page_num in page_content['pages'].keys():
+                page_content['pages'][page_num].get('text').append(paragraph.get('content'))
             else:
-                page_content[page_num] = {'tables': [], 'text': [paragraph.get('content')]}
+                page_content['pages'][page_num] = {'tables': [], 'text': [paragraph.get('content')]}
 
         for table in result_dict['tables']:
             page_num = table.get('bounding_regions')[0].get('page_number')
@@ -83,13 +83,16 @@ def page_text_and_tables(result_dicts):
             df.reset_index(inplace=True, drop=True)
             df.dropna(inplace=True)
 
-            if page_num not in page_content.keys():
-                page_content[page_num] = {'tables': [df], 'text': []}
+            if page_num in page_content['pages'].keys():
+                page_content['pages'][page_num].get('tables').append(df)
             else:
-                page_content[page_num].get('tables').append(df)
-
+                page_content['pages'][page_num] = {'tables': [df], 'text': []}
             _dedupe_text_from_tables(page_num, page_content, df)
 
+        page_content['report_name'] = result_dict['report_name']
+        page_content['company_name'] = result_dict['company_name']
+        page_content['report_quarter'] = result_dict['report_quarter']
+        page_content['report_blob_path'] = result_dict['report_blob_path']
         page_contents.append(page_content)
     
     return page_contents
@@ -97,5 +100,5 @@ def page_text_and_tables(result_dicts):
 
 def _dedupe_text_from_tables(page_num, page_content, df):
     """Remove duplicate text from a table."""
-    page_content[page_num].get('text')[:] = \
-        [text for text in page_content[page_num].get('text') if text not in df.values]
+    page_content['pages'][page_num].get('text')[:] = \
+        [text for text in page_content['pages'][page_num].get('text') if text not in df.values]

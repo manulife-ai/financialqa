@@ -100,19 +100,24 @@ class IngestionPipeline:
     def convert_pages_to_table_docs(self, paged_text_and_tables, metadata_page_span=1):
         """Create LangChain Document objects from extracted tables and text."""
         lang_doc_tables = []
-        self.logger.info('Converting pages to table documents...')
+        self.logger.info('Converting pages to langchain table documents...')
         for i, report in enumerate(paged_text_and_tables):
-            num_pages = max(list(report.keys()))
-            for page_num, tables_and_text in report.items():
+            company_name = report.get('company_name')
+            report_quarter = report.get('report_quarter')
+            report_blob_path = report.get('report_blob_path')
+            pages = report.get('pages')
+            for page_num, tables_and_text in pages.items():
                 for table in tables_and_text.get('tables'):
                     metadata = preprocess_text(' '.join(tables_and_text.get('text')))
                     lang_doc_tables.append(
                         Document(
                             page_content=table.to_string(),
-                            # page_content=str(table),
                             metadata={
                                 'text': metadata, 
                                 'page_num': page_num,
+                                'company_name': company_name,
+                                'report_quarter': report_quarter,
+                                'report_blob_path': report_blob_path,
                                 }
                             )
                         )
@@ -120,11 +125,11 @@ class IngestionPipeline:
         return lang_doc_tables
     
 
-    def chunk_docs(self, lang_doc_tables):
+    def chunk_docs(self, lang_doc_tables, chunk_size=400):
         """Chunk LangChain Documents representing extracted tables."""
-        self.logger.info('Chunking documents...')
+        self.logger.info('Chunking langchain documents...')
         # text_splitter = TokenTextSplitter(chunk_size=400, chunk_overlap=0)
-        text_splitter = CharacterTextSplitter(chunk_size=400, chunk_overlap=0)
+        text_splitter = CharacterTextSplitter(chunk_size=chunk_size, chunk_overlap=0)
         lang_doc_tables_chunks = text_splitter.split_documents(lang_doc_tables)
     
         return lang_doc_tables_chunks
@@ -160,7 +165,6 @@ class IngestionPipeline:
         try:
             logging.disable(logging.WARNING)
             search_client.get_index(os.environ['AZURE_AI_SEARCH_INDEX_NAME'])
-            logging.disable(logging.NOTSET)
 
         except:
             self.logger.info(
@@ -207,7 +211,20 @@ class IngestionPipeline:
                 name="metadata",
                 type=SearchFieldDataType.String,
                 searchable=True,
-                filterable=True,),
+                filterable=True,
+                ),
+                SimpleField(
+                name="report_name",
+                type=SearchFieldDataType.String,
+                filterable=True,
+                searchable=True,
+                ),
+                SimpleField(
+                name="report_quarter",
+                type=SearchFieldDataType.String,
+                filterable=True,
+                searchable=True,
+                ),
             ]
 
             if create_new_index:
@@ -233,7 +250,7 @@ class IngestionPipeline:
                         round(time.time() - t), 'seconds')
         logging.disable(logging.NOTSET)
 
-        # return acs_vector_store
+        return acs_vector_store
 
     def ingest_pdfs(self, create_new_index=True, add_docs=False):
         """Parse, chunk, and ingest in one method."""
