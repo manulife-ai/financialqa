@@ -1,13 +1,11 @@
 import os
 import sys
-sys.path.append('..')
 import logging
 logging.basicConfig(    
         # filename=logfile,    
         level=logging.INFO,    
         format="%(asctime)s %(levelname)s %(name)s line %(lineno)d  %(message)s",    
         datefmt="%H:%M:%S")   
-
 import argparse
 from typing import Dict, List
 
@@ -19,12 +17,12 @@ import pandas as pd
 logger = logging.getLogger(__name__)
 
 def parse_pdfs(list_of_blob_paths: str) -> List[Dict[str, str]]:
-
+    """Parse PDF files from Azure Blob Storage container using Azure Document Intellignece."""
     result_dicts = []
     logger.info('Parsing PDFs...')
     logging.disable(logging.WARNING)
-    for blob_path in list_of_blob_paths:
 
+    for blob_path in list_of_blob_paths:
         endpoint = os.environ['DOCUMENT_ENDPOINT']
         key = os.environ['DOCUMENT_KEY']
         document_analysis_client = DocumentAnalysisClient(
@@ -47,7 +45,7 @@ def parse_pdfs(list_of_blob_paths: str) -> List[Dict[str, str]]:
 
 
 def page_text_and_tables(result_dicts):
-
+    """Store extracted text and tables as values into a nested dictionary based on page number keys."""
     page_contents = []
 
     for result_dict in result_dicts:
@@ -95,6 +93,6 @@ def page_text_and_tables(result_dicts):
 
 
 def _dedupe_text_from_tables(page_num, page_content, df):
-    
+    """Remove duplicate text from a table."""
     page_content[page_num].get('text')[:] = \
         [text for text in page_content[page_num].get('text') if text not in df.values]

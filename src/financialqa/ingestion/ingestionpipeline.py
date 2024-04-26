@@ -39,13 +39,11 @@ warnings.filterwarnings("ignore")
 
 '''
 To-do's:
-- Configure and add logging
 - Add option to add documents to index_docs()
 - Address langchain OpenAI error
 '''
 
 class IngestionPipeline:
-
 
     def __init__(self, run_test_pdf=''):
     
@@ -61,7 +59,7 @@ class IngestionPipeline:
         self.logger = logging.getLogger(__name__)
 
     def get_blob_container_client(self):
-
+        """Instantiate Azure Blob Storage container client."""
         self.logger.info('Getting Azure Storage blob container client...')
         blob_service_client = \
             BlobServiceClient.from_connection_string(self.azure_storage_connection_string)
@@ -73,7 +71,7 @@ class IngestionPipeline:
 
 
     def extract_blob_paths(self, container_client):
-
+        """Extract blob paths from Azure Blob Storage container."""
         list_of_blob_paths = []
         self.logger.info('Extracting blob paths...')
         logging.disable(logging.WARNING)
@@ -91,7 +89,7 @@ class IngestionPipeline:
     
 
     def convert_pages_to_table_docs(self, paged_text_and_tables, metadata_page_span=1):
-
+        """Create LangChain Document objects from extracted tables and text."""
         lang_doc_tables = []
         self.logger.info('Converting pages to table documents...')
         for i, report in enumerate(paged_text_and_tables):
@@ -114,7 +112,7 @@ class IngestionPipeline:
     
 
     def chunk_docs(self, lang_doc_tables):
-
+        """Chunk LangChain Documents representing extracted tables."""
         self.logger.info('Chunking documents...')
         # text_splitter = TokenTextSplitter(chunk_size=400, chunk_overlap=0)
         text_splitter = CharacterTextSplitter(chunk_size=400, chunk_overlap=0)
@@ -124,7 +122,7 @@ class IngestionPipeline:
     
 
     def get_search_client(self):
-
+        """Instantiate Azure AI Search client."""
         self.logger.info('Getting search client...')
         azure_search_endpoint = "https://" + self.azure_search_service_name + ".search.windows.net"
         search_client = SearchIndexClient(azure_search_endpoint,
@@ -133,7 +131,7 @@ class IngestionPipeline:
 
     
     def get_embedding_model(self):
-
+        """Instantiate OpenAI embedding model."""
         self.logger.info('Getting OpenAI embedding model...')
         embeddings = OpenAIEmbeddings(
             deployment='text-embedding-ada-002-v2',
@@ -146,7 +144,6 @@ class IngestionPipeline:
 
         embedding_model=embeddings.embed_query
         return embedding_model
-
 
     def index_docs(self, search_client, lang_doc_tables_chunks, embedding_model, create_new_index=False, add_docs=False):
 
@@ -229,13 +226,8 @@ class IngestionPipeline:
 
         # return acs_vector_store
 
-
     def ingest_pdfs(self, create_new_index=True, add_docs=False):
-
-        '''
-        Run end-to-end pipeline in one method
-        '''
-
+        """Parse, chunk, and ingest in one method."""
         container_client = self.get_blob_container_client()
         blob_paths = self.extract_blob_paths(container_client)
         result_dicts = parse_pdfs(blob_paths)
@@ -248,7 +240,6 @@ class IngestionPipeline:
             search_client, lang_doc_tables_chunks, embedding_model,
             create_new_index=True, add_docs=False
             )
-
 
 if __name__ == '__main__':
 
@@ -280,14 +271,7 @@ if __name__ == '__main__':
     #     help="azure search key",
     # )
 
-    # from dotenv import load_dotenv
-    # load_dotenv()
-
     # args = arg_parser.parse_args()
 
     ingestion_pipeline = IngestionPipeline(run_test_pdf='MFC_QPR_2023_Q4_EN.pdf')
-
-    # def __init__(self, azure_storage_connection_string, azure_storage_container_name,
-    #              azure_search_service_name, azure_search_index_name, azure_search_key):
-
     ingestion_pipeline.ingest_pdfs()
