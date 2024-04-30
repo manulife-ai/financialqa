@@ -56,11 +56,20 @@ def page_text_and_tables(result_dicts):
 
         for paragraph in result_dict.get('paragraphs'):
             page_num = paragraph.get('bounding_regions')[0].get('page_number')
-
             if page_num in page_content['pages'].keys():
                 page_content['pages'][page_num].get('text').append(paragraph.get('content'))
             else:
                 page_content['pages'][page_num] = {'tables': [], 'text': [paragraph.get('content')]}
+
+            if paragraph['role'] is not None:
+                if paragraph['role'] in page_content['pages'][page_num].keys():
+                    page_content['pages'][page_num][paragraph['role']].append(paragraph.get('content'))
+                else:
+                    page_content['pages'][page_num][paragraph['role']] = [paragraph.get('content')]
+                # remove duplicates from text
+                for role in page_content['pages'][page_num][paragraph['role']]:
+                    if role in page_content['pages'][page_num]['text']:
+                        page_content['pages'][page_num]['text'].remove(role)
 
         for table in result_dict['tables']:
             page_num = table.get('bounding_regions')[0].get('page_number')
