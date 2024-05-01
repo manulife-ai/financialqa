@@ -74,9 +74,13 @@ class IngestionPipeline:
         """Extract blob paths from Azure Blob Storage container."""
         # list_of_blob_paths = []
         report_contents = {}
+        test_pdfs = ['MFC_QPR_2023_Q4_EN.pdf', 'RBC_Preview_may_1_2023.pdf', 'MDA_GWO_2023_Q4.pdf', 'MDA_SLF_2023_Q4.pdf', \
+                     'MDA_PRU_2023_Q4.pdf',]
         self.logger.info('Extracting report contents...')
         logging.disable(logging.WARNING)
         for blob in container_client.list_blobs():
+            if blob.name not in test_pdfs:
+                continue
             if self.run_test_pdf:
                 if blob.name != self.run_test_pdf:
                     continue
@@ -106,9 +110,9 @@ class IngestionPipeline:
             report_quarter = report.get('report_quarter')
             report_blob_path = report.get('report_blob_path')
             pages = report.get('pages')
-            for page_num, tables_and_text in pages.items():
-                for table in tables_and_text.get('tables'):
-                    metadata = preprocess_text(' '.join(tables_and_text.get('text')))
+            for page_num, page_content in pages.items():
+                for table in page_content.get('tables'):
+                    metadata = preprocess_text(' '.join(page_content.get('text')))
                     lang_doc_tables.append(
                         Document(
                             page_content=table.to_string(),
@@ -121,15 +125,31 @@ class IngestionPipeline:
                                 }
                             )
                         )
-
+                    if page_content.get('title') is not None:
+                        lang_doc_tables[-1].metadata['page_titles'] = ', '.join(page_content.get('title'))
+                    else:
+                        lang_doc_tables[-1].metadata['page_titles'] = ''
+                    if page_content.get('pageHeader') is not None:
+                        lang_doc_tables[-1].metadata['page_headers'] = ', '.join(page_content.get('pageHeader'))
+                    else:
+                        lang_doc_tables[-1].metadata['page_headers'] = ''
+                    if page_content.get('sectionHeader') is not None:
+                        lang_doc_tables[-1].metadata['section_headers'] = ', '.join(page_content.get('sectionHeader'))
+                    else:
+                        lang_doc_tables[-1].metadata['section_headers'] = ''
+                    if page_content.get('pageFooter') is not None:
+                        lang_doc_tables[-1].metadata['page_footers'] = ', '.join(page_content.get('pageFooter'))
+                    else:
+                        lang_doc_tables[-1].metadata['page_footers'] = ''
+                        
         return lang_doc_tables
     
 
     def chunk_docs(self, lang_doc_tables, chunk_size=400):
         """Chunk LangChain Documents representing extracted tables."""
         self.logger.info('Chunking langchain documents...')
-        # text_splitter = TokenTextSplitter(chunk_size=400, chunk_overlap=0)
-        text_splitter = CharacterTextSplitter(chunk_size=chunk_size, chunk_overlap=0)
+        text_splitter = TokenTextSplitter(chunk_size=chunk_size, chunk_overlap=0)
+        # text_splitter = CharacterTextSplitter(chunk_size=chunk_size, chunk_overlap=0)
         lang_doc_tables_chunks = text_splitter.split_documents(lang_doc_tables)
     
         return lang_doc_tables_chunks
@@ -190,40 +210,64 @@ class IngestionPipeline:
             # default field names see https://python.langchain.com/docs/integrations/vectorstores/azuresearch/
             fields = [
                 SimpleField(
-                name="id",
-                type=SearchFieldDataType.String,
-                key=True,
-                filterable=True,
+                    name="id",
+                    type=SearchFieldDataType.String,
+                    key=True,
+                    filterable=True,
                 ),
                 SearchableField(
-                name="content",
-                type=SearchFieldDataType.String,
-                searchable=True,
+                    name="content",
+                    type=SearchFieldDataType.String,
+                    searchable=True,
                 ),
                 SearchField(
-                name="content_vector",
-                type=SearchFieldDataType.Collection(SearchFieldDataType.Single),
-                searchable=True,
-                vector_search_dimensions=len(embedding_model("Text")),
-                vector_search_configuration="default",
+                    name="content_vector",
+                    type=SearchFieldDataType.Collection(SearchFieldDataType.Single),
+                    searchable=True,
+                    vector_search_dimensions=len(embedding_model("Text")),
+                    vector_search_configuration="default",
                 ),
                 SearchableField(
-                name="metadata",
-                type=SearchFieldDataType.String,
-                searchable=True,
-                filterable=True,
+                    name="metadata",
+                    type=SearchFieldDataType.String,
+                    searchable=True,
+                    filterable=True,
                 ),
                 SimpleField(
-                name="report_name",
-                type=SearchFieldDataType.String,
-                filterable=True,
-                searchable=True,
+                    name="company_name",
+                    type=SearchFieldDataType.String,
+                    filterable=True,
+                    searchable=True,
                 ),
                 SimpleField(
-                name="report_quarter",
-                type=SearchFieldDataType.String,
-                filterable=True,
-                searchable=True,
+                    name="report_quarter",
+                    type=SearchFieldDataType.String,
+                    filterable=True,
+                    searchable=True,
+                ),
+                SimpleField(
+                    name="page_titles",
+                    type=SearchFieldDataType.String,
+                    # filterable=True,
+                    searchable=True,
+                ),
+                SimpleField(
+                    name="page_headers",
+                    type=SearchFieldDataType.String,
+                    # filterable=True,
+                    searchable=True,
+                ),
+                SimpleField(
+                    name="page_footers",
+                    type=SearchFieldDataType.String,
+                    # filterable=True,
+                    searchable=True,
+                ),
+                SimpleField(
+                    name="section_headers",
+                    type=SearchFieldDataType.String,
+                    # filterable=True,
+                    searchable=True,
                 ),
             ]
 
