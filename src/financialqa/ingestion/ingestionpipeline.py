@@ -271,13 +271,14 @@ class IngestionPipeline:
                     search_client.delete_index(os.environ['AZURE_AI_SEARCH_INDEX_NAME'])
                 print('Creating new index', os.environ['AZURE_AI_SEARCH_INDEX_NAME'], 'in search service', \
                         os.environ['AZURE_AI_SEARCH_SERVICE_NAME'])
-                acs_vector_store = AzureSearch(
-                    azure_search_endpoint=self.azure_search_endpoint,
-                    azure_search_key=os.environ['AZURE_AI_SEARCH_KEY'],
-                    index_name=os.environ['AZURE_AI_SEARCH_INDEX_NAME'],
-                    embedding_function=embedding_model,
-                    fields=fields,
-                )
+            acs_vector_store = AzureSearch(
+                azure_search_endpoint=self.azure_search_endpoint,
+                azure_search_key=os.environ['AZURE_AI_SEARCH_KEY'],
+                index_name=os.environ['AZURE_AI_SEARCH_INDEX_NAME'],
+                embedding_function=embedding_model,
+                fields=fields,
+            )
+            if create_new_index:
                 import time
                 t = time.time()
                 print('Pushing documents to Azure vector store...')
