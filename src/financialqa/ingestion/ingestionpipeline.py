@@ -45,7 +45,7 @@ To-do's:
 
 class IngestionPipeline:
 
-    def __init__(self, run_test_pdf=''):
+    def __init__(self):
     
         self.azure_storage_connection_string = os.environ['AZURE_STORAGE_CONNECTION_STRING']
         self.azure_storage_container_name = os.environ['AZURE_STORAGE_CONTAINER_NAME']
@@ -54,8 +54,6 @@ class IngestionPipeline:
         self.azure_search_key = os.environ['AZURE_AI_SEARCH_KEY']
         self.azure_search_endpoint = "https://" + self.azure_search_service_name + ".search.windows.net"
 
-        self.run_test_pdf = run_test_pdf
-        
         self.logger = logging.getLogger(__name__)
 
     def get_blob_container_client(self):
@@ -70,23 +68,19 @@ class IngestionPipeline:
         return container_client
 
 
-    def extract_report_contents(self, container_client):
-        """Extract blob paths from Azure Blob Storage container."""
-        # list_of_blob_paths = []
+    def extract_report_contents(self, container_client, select_files=[]):
+        """Extract blob reports from Azure Blob Storage container."""
         report_contents = {}
-        test_pdfs = ['MFC_QPR_2023_Q4_EN.pdf', 'RBC_Preview_may_1_2023.pdf', 'MDA_GWO_2023_Q4.pdf', 'MDA_SLF_2023_Q4.pdf', \
-                     'MDA_PRU_2023_Q4.pdf',]
         self.logger.info('Extracting report contents...')
         logging.disable(logging.WARNING)
         for blob in container_client.list_blobs():
-            if blob.name not in test_pdfs:
+            if select_files and blob.name not in select_files:
                 continue
-            if self.run_test_pdf:
-                if blob.name != self.run_test_pdf:
-                    continue
             report_name = blob.name
-            report_blob_path = 'https://' + os.environ['AZURE_STORAGE_CONTAINER_ACCOUNT'] \
-                                + '.blob.core.windows.net/' + os.environ['AZURE_STORAGE_CONTAINER_NAME'] \
+            report_blob_path = 'https://' \
+                                + os.environ['AZURE_STORAGE_CONTAINER_ACCOUNT'] \
+                                + '.blob.core.windows.net/' \
+                                + os.environ['AZURE_STORAGE_CONTAINER_NAME'] \
                                 + '/' + report_name
             name_contents = report_name.split('_')
             company_name = name_contents[0]
@@ -100,7 +94,6 @@ class IngestionPipeline:
         
         return report_contents
     
-
     def convert_pages_to_table_docs(self, paged_text_and_tables, metadata_page_span=1):
         """Create LangChain Document objects from extracted tables and text."""
         lang_doc_tables = []
@@ -285,7 +278,6 @@ class IngestionPipeline:
                     embedding_function=embedding_model,
                     fields=fields,
                 )
-
                 import time
                 t = time.time()
                 print('Pushing documents to Azure vector store...')
@@ -343,5 +335,5 @@ if __name__ == '__main__':
 
     # args = arg_parser.parse_args()
 
-    ingestion_pipeline = IngestionPipeline(run_test_pdf='MFC_QPR_2023_Q4_EN.pdf')
+    ingestion_pipeline = IngestionPipeline()
     ingestion_pipeline.ingest_pdfs()
