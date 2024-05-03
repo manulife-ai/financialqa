@@ -53,7 +53,6 @@ def page_text_and_tables(result_dicts):
 
     for result_dict in result_dicts:
         page_content = {'pages': {}}
-
         for paragraph in result_dict.get('paragraphs'):
             page_num = paragraph.get('bounding_regions')[0].get('page_number')
             if page_num in page_content['pages'].keys():
@@ -66,7 +65,7 @@ def page_text_and_tables(result_dicts):
                     page_content['pages'][page_num][paragraph['role']].append(paragraph.get('content'))
                 else:
                     page_content['pages'][page_num][paragraph['role']] = [paragraph.get('content')]
-                # remove duplicates from text
+                # Remove duplicate text roles from text
                 for role in page_content['pages'][page_num][paragraph['role']]:
                     if role in page_content['pages'][page_num]['text']:
                         page_content['pages'][page_num]['text'].remove(role)
@@ -80,6 +79,9 @@ def page_text_and_tables(result_dicts):
 
             for cell in table['cells']:
             # Handles nested headers
+                # Remove duplicate table cell values from text
+                if cell['content'] in page_content['pages'][page_num]['text']:
+                    page_content['pages'][page_num]['text'].remove(cell['content'])
                 if cell['kind'] == 'columnHeader':
                     arr[0][cell['column_index']:cell['column_index'] +
                         cell['column_span']] += ' ' + str(cell['content'])
@@ -88,15 +90,16 @@ def page_text_and_tables(result_dicts):
 
             df = pd.DataFrame(arr)
             df.columns = df.iloc[0]
-            df = df.drop(df.index[0:2])
+            df = df.drop(df.index[0])
             df.reset_index(inplace=True, drop=True)
             df.dropna(inplace=True)
+            # df = df.to_dict(orient="records")
 
             if page_num in page_content['pages'].keys():
                 page_content['pages'][page_num].get('tables').append(df)
             else:
                 page_content['pages'][page_num] = {'tables': [df], 'text': []}
-            _dedupe_text_from_tables(page_num, page_content, df)
+            # _dedupe_text_from_tables(page_num, page_content, df)
 
         page_content['report_name'] = result_dict['report_name']
         page_content['company_name'] = result_dict['company_name']
