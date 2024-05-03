@@ -44,7 +44,12 @@ To-do's:
 '''
 
 class IngestionPipeline:
-
+    """
+    A class which provides functionality to extract blob storage container contents,
+    construct and chunk financial tabular Document objects, and uploading the documents
+    to an Azure AI Search index for use in a Financial-QA RAG application.
+    """
+    
     def __init__(self):
     
         self.azure_storage_connection_string = os.environ['AZURE_STORAGE_CONNECTION_STRING']
@@ -55,25 +60,16 @@ class IngestionPipeline:
         self.azure_search_endpoint = "https://" + self.azure_search_service_name + ".search.windows.net"
 
         self.logger = logging.getLogger(__name__)
+        self.blob_storage_container = self._get_blob_container_client()
+        self.search_client = self._get_search_client()
+        self.embedding_model = self._get_embedding_model()
 
-    def get_blob_container_client(self):
-        """Instantiate Azure Blob Storage container client."""
-        self.logger.info('Getting Azure Storage blob container client...')
-        blob_service_client = \
-            BlobServiceClient.from_connection_string(self.azure_storage_connection_string)
-        
-        container_client = \
-            blob_service_client.get_container_client(self.azure_storage_container_name)
-        
-        return container_client
-
-
-    def extract_report_contents(self, container_client, select_files=[]):
+    def extract_report_contents(self, select_files=[]):
         """Extract blob reports from Azure Blob Storage container."""
         report_contents = {}
         self.logger.info('Extracting report contents...')
         logging.disable(logging.WARNING)
-        for blob in container_client.list_blobs():
+        for blob in self.blob_storage_container.list_blobs():
             if select_files and blob.name not in select_files:
                 continue
             report_name = blob.name
@@ -108,7 +104,8 @@ class IngestionPipeline:
                     metadata = preprocess_text(' '.join(page_content.get('text')))
                     lang_doc_tables.append(
                         Document(
-                            page_content=table.to_string(),
+                            # page_content=table.to_string(),
+                            page_content=str(table),
                             metadata={
                                 'text': metadata, 
                                 'page_num': page_num,
@@ -137,7 +134,6 @@ class IngestionPipeline:
                         
         return lang_doc_tables
     
-
     def chunk_docs(self, lang_doc_tables, chunk_size=400):
         """Chunk LangChain Documents representing extracted tables."""
         self.logger.info('Chunking langchain documents...')
@@ -147,31 +143,6 @@ class IngestionPipeline:
     
         return lang_doc_tables_chunks
     
-
-    def get_search_client(self):
-        """Instantiate Azure AI Search client."""
-        self.logger.info('Getting search client...')
-        azure_search_endpoint = "https://" + self.azure_search_service_name + ".search.windows.net"
-        search_client = SearchIndexClient(azure_search_endpoint,
-                                 AzureKeyCredential(self.azure_search_key))
-        return search_client
-
-    
-    def get_embedding_model(self):
-        """Instantiate OpenAI embedding model."""
-        self.logger.info('Getting OpenAI embedding model...')
-        embeddings = OpenAIEmbeddings(
-            deployment='text-embedding-ada-002-v2',
-            openai_api_base=os.environ['OPENAI_API_BASE'],
-            openai_api_type=os.environ['OPENAI_API_TYPE'],
-            openai_api_key=os.environ['OPENAI_API_KEY'],
-            openai_api_version=os.environ['OPENAI_API_VERSION'],
-            # chunk_size = 1
-            )
-
-        embedding_model=embeddings.embed_query
-        return embedding_model
-
     def index_docs(self, search_client, lang_doc_tables_chunks, embedding_model, create_new_index=False, add_docs=False):
 
         self.logger.info('Uploading documents to Azure AI Search index...')
@@ -303,6 +274,37 @@ class IngestionPipeline:
             search_client, lang_doc_tables_chunks, embedding_model,
             create_new_index=True, add_docs=False
             )
+
+    def _get_blob_container_client(self):
+        """Instantiate Azure Blob Storage container client."""
+        self.logger.info('Getting Azure Storage blob container client...')
+        blob_service_client = \
+            BlobServiceClient.from_connection_string(self.azure_storage_connection_string)
+        container_client = \
+            blob_service_client.get_container_client(self.azure_storage_container_name)
+        return container_client
+
+    def _get_search_client(self):
+        """Instantiate Azure AI Search client."""
+        self.logger.info('Getting search client...')
+        azure_search_endpoint = "https://" + self.azure_search_service_name + ".search.windows.net"
+        search_client = SearchIndexClient(azure_search_endpoint,
+                                 AzureKeyCredential(self.azure_search_key))
+        return search_client
+
+    def _get_embedding_model(self):
+        """Instantiate OpenAI embedding model."""
+        self.logger.info('Getting OpenAI embedding model...')
+        embeddings = OpenAIEmbeddings(
+            deployment='text-embedding-ada-002-v2',
+            openai_api_base=os.environ['OPENAI_API_BASE'],
+            openai_api_type=os.environ['OPENAI_API_TYPE'],
+            openai_api_key=os.environ['OPENAI_API_KEY'],
+            openai_api_version=os.environ['OPENAI_API_VERSION'],
+            # chunk_size = 1
+            )
+        embedding_model=embeddings.embed_query
+        return embedding_model
 
 if __name__ == '__main__':
 
