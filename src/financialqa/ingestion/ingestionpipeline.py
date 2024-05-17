@@ -1,6 +1,6 @@
 import os
 import sys
-# sys.path.append('..')
+sys.path.append('..')
 import argparse
 import logging
 logging.basicConfig(    
@@ -67,7 +67,7 @@ class IngestionPipeline:
     def extract_report_contents(self, select_files=[]):
         """Extract blob reports from Azure Blob Storage container."""
         report_contents = {}
-        self.logger.info('Extracting report contents...')
+        self.logger.info('Extracting report contents from Azure Blob Storage container...')
         logging.disable(logging.WARNING)
         for blob in self.blob_storage_container.list_blobs():
             if select_files and blob.name not in select_files:
@@ -87,13 +87,12 @@ class IngestionPipeline:
                 'report_blob_path': report_blob_path,
                 }
         logging.disable(logging.NOTSET)
-        
         return report_contents
     
     def convert_pages_to_table_docs(self, paged_text_and_tables, metadata_page_span=1):
         """Create LangChain Document objects from extracted tables and text."""
         lang_doc_tables = []
-        self.logger.info('Converting pages to langchain table documents...')
+        self.logger.info('Converting pages to LangChain documents...')
         for i, report in enumerate(paged_text_and_tables):
             company_name = report.get('company_name')
             report_quarter = report.get('report_quarter')
@@ -131,45 +130,30 @@ class IngestionPipeline:
                         lang_doc_tables[-1].metadata['page_footers'] = ', '.join(page_content.get('pageFooter'))
                     else:
                         lang_doc_tables[-1].metadata['page_footers'] = ''
-                        
         return lang_doc_tables
     
     def chunk_docs(self, lang_doc_tables, chunk_size=400):
         """Chunk LangChain Documents representing extracted tables."""
-        self.logger.info('Chunking langchain documents...')
+        self.logger.info('Chunking LangChain Documents...')
         text_splitter = TokenTextSplitter(chunk_size=chunk_size, chunk_overlap=0)
         # text_splitter = CharacterTextSplitter(chunk_size=chunk_size, chunk_overlap=0)
         lang_doc_tables_chunks = text_splitter.split_documents(lang_doc_tables)
-    
         return lang_doc_tables_chunks
     
-    def index_docs(self, search_client, lang_doc_tables_chunks, embedding_model, create_new_index=False, add_docs=False):
-
-        self.logger.info('Uploading documents to Azure AI Search index...')
+    def get_search_index(self, add_docs=None, overwrite_index=False):
+        """Get a specific search index instance with an option to add more docs to it."""
+        self.logger.info('Getting Azure AI Search index {0}'.format(self.azure_search_index_name))
+        logging.disable(logging.WARNING)
         try:
-            logging.disable(logging.WARNING)
-            search_client.get_index(os.environ['AZURE_AI_SEARCH_INDEX_NAME'])
-
+            self.search_client.get_index(os.environ['AZURE_AI_SEARCH_INDEX_NAME'])
         except:
-            self.logger.info(
-                ' '.join([
-                    'No existing index with name', os.environ['AZURE_AI_SEARCH_INDEX_NAME'], \
-                    'in search service', os.environ['AZURE_AI_SEARCH_SERVICE_NAME']])
-                )
-            #  print('No existing index with name', os.environ['AZURE_AI_SEARCH_INDEX_NAME'], \
-            #         'in search service', os.environ['AZURE_AI_SEARCH_SERVICE_NAME'])
+            print('No existing index with name {0} in search service {1}'.\
+                    format(self.azure_search_index_name, self.azure_search_service_name))
             index_exists = 0
-
         else:
-            self.logger.info(
-                ' '.join([
-                'Existing index', os.environ['AZURE_AI_SEARCH_INDEX_NAME'], 
-                'in search service', os.environ['AZURE_AI_SEARCH_SERVICE_NAME']])
-            )
-            # print('Existing index', os.environ['AZURE_AI_SEARCH_INDEX_NAME'], 'in search service', \
-            #         os.environ['AZURE_AI_SEARCH_SERVICE_NAME'])
+            print('Found existing index with name {0} in search service {1}'.\
+                    format(self.azure_search_index_name, self.azure_search_service_name))
             index_exists = 1
-
         finally:
             # default field names see https://python.langchain.com/docs/integrations/vectorstores/azuresearch/
             fields = [
@@ -188,7 +172,7 @@ class IngestionPipeline:
                     name="content_vector",
                     type=SearchFieldDataType.Collection(SearchFieldDataType.Single),
                     searchable=True,
-                    vector_search_dimensions=len(embedding_model("Text")),
+                    vector_search_dimensions=len(self.embedding_model("Text")),
                     vector_search_configuration="default",
                 ),
                 SearchableField(
@@ -234,50 +218,55 @@ class IngestionPipeline:
                     searchable=True,
                 ),
             ]
-
-            if create_new_index:
+            if overwrite_index:
                 if index_exists:
-                    print('Deleting existing index', os.environ['AZURE_AI_SEARCH_INDEX_NAME'], 'in search service', \
-                            os.environ['AZURE_AI_SEARCH_SERVICE_NAME'])
-                    search_client.delete_index(os.environ['AZURE_AI_SEARCH_INDEX_NAME'])
-                print('Creating new index', os.environ['AZURE_AI_SEARCH_INDEX_NAME'], 'in search service', \
-                        os.environ['AZURE_AI_SEARCH_SERVICE_NAME'])
+                    print('Overwriting existing index {0} in search service {1}'.\
+                            format(self.azure_search_index_name, self.azure_search_service_name))
+                    # logging.info(
+                    #     ' '.join([
+                    #         'Deleting existing index', self.azure_search_index_name, \
+                    #         'in search service', self.azure_search_service_name])
+                    #     )
+                    self.search_client.delete_index(self.azure_search_index_name)
+                else:
+                    print('No existing index named {0} to delete in search service {1}'.\
+                        format(self.azure_search_index_name, self.azure_search_service_name))
+                # logging.info(
+                #     ' '.join([
+                #         'Creating new index', self.azure_search_index_name, \
+                #         'in search service', self.azure_search_service_name])
+                # )
+                # logging.info(' '.join(['No existing index to delete']))
             acs_vector_store = AzureSearch(
                 azure_search_endpoint=self.azure_search_endpoint,
-                azure_search_key=os.environ['AZURE_AI_SEARCH_KEY'],
-                index_name=os.environ['AZURE_AI_SEARCH_INDEX_NAME'],
-                embedding_function=embedding_model,
+                azure_search_key=self.azure_search_key,
+                index_name=self.azure_search_index_name,
+                embedding_function=self.embedding_model,
                 fields=fields,
             )
-            if create_new_index:
+            if add_docs is not None:
                 import time
                 t = time.time()
-                print('Pushing documents to Azure vector store...')
-                acs_vector_store.add_documents(documents=lang_doc_tables_chunks)
-                print(len(lang_doc_tables_chunks), 'documents successfully indexed in', \
-                        round(time.time() - t), 'seconds')
+                print('Adding {0} new documents to {1}'.\
+                    format(len(add_docs), self.azure_search_index_name))
+                acs_vector_store.add_documents(documents=add_docs)
+                print('{0} new documents successfully added to index {1} in {2}s'.\
+                    format(len(add_docs), self.azure_search_index_name, round(time.time() - t)))
         logging.disable(logging.NOTSET)
-
         return acs_vector_store
 
-    def ingest_pdfs(self, create_new_index=True, add_docs=False):
+    def ingest_pdfs(self, overwrite_index=False):
         """Parse, chunk, and ingest in one method."""
-        container_client = self.get_blob_container_client()
-        blob_paths = self.extract_blob_paths(container_client)
-        result_dicts = parse_pdfs(blob_paths)
+        report_contents = self.extract_report_contents()
+        result_dicts = parse_pdfs(report_contents)
         paged_text_and_tables = page_text_and_tables(result_dicts)
         lang_doc_tables = self.convert_pages_to_table_docs(paged_text_and_tables)
         lang_doc_tables_chunks = self.chunk_docs(lang_doc_tables)
-        search_client = self.get_search_client()
-        embedding_model = self.get_embedding_model()
-        self.index_docs(
-            search_client, lang_doc_tables_chunks, embedding_model,
-            create_new_index=True, add_docs=False
-            )
+        self.get_search_index(add_docs=lang_doc_tables_chunks, overwrite_index=overwrite_index)
 
     def _get_blob_container_client(self):
         """Instantiate Azure Blob Storage container client."""
-        self.logger.info('Getting Azure Storage blob container client...')
+        self.logger.info('Getting Azure Blob Storage container client...')
         blob_service_client = \
             BlobServiceClient.from_connection_string(self.azure_storage_connection_string)
         container_client = \
@@ -286,7 +275,7 @@ class IngestionPipeline:
 
     def _get_search_client(self):
         """Instantiate Azure AI Search client."""
-        self.logger.info('Getting search client...')
+        self.logger.info('Getting Azure AI Search client...')
         azure_search_endpoint = "https://" + self.azure_search_service_name + ".search.windows.net"
         search_client = SearchIndexClient(azure_search_endpoint,
                                  AzureKeyCredential(self.azure_search_key))
