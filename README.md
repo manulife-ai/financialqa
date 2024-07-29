@@ -1,64 +1,63 @@
-# Financial Report PDF Table Indexer
-This package provides functionality to parse, chunk, and index the tables and text from (financial report) PDF files into an Azure AI Search vector database for (financial data) tabular question-answering (QA) with an LLM in a Retrieval Augmented Generation (RAG) framework.
+# Financial Report PDF Indexing
+Parse tables and text from (financial report) PDFs and upload them into an Azure AI Search index for (financial data) tabular question-answering (QA) with an LLM in a Retrieval Augmented Generation (RAG) framework.
 
 ## Features
+* Effective parsing of tables and text from PDFs stored in an Azure Blob Storage container using Azure Document Intelligence
+<!-- ```python
+{page_num: {'text': [extracted_text], 'tables': [extracted_tables]}
+``` -->
+* Document object creation with surrounding text metadata and chunking using ```LangChain``` functionality
+* Document embedding generation using Azure OpenAI and insertion into an Azure AI Search index
 
-The features that come included in this package are:
+![Features](ingestion.PNG)
 
-* Effective parsing of tables and text in pdfs using AI Document Intelligence services and storing them as a nested dictionary of the form:
-```python
-parsed_table = {page_num: {'text': [extracted_text], 'tables': [extracted_tables]}
-```
-* Attaches metadata to the extracted tables stored as `pandas.DataFrame` objects based on surrounding text on the same page and chunks whole tables using `langchain` functionality
-* Ingests the chunked tables into the Azure AI Search vector store
-
-## Installation and Usage
-
-The following services are used in this package:
-
-* Azure Storage Container
-* Azure AI Document Intelligence
+## Services Used
+* Azure Blob Storage Container
+* Azure Document Intelligence
 * Azure AI Search
 * Azure OpenAI Studio
 
-__Note that the pdfs are assumed to be stored in an Azure Blob Storage container__.
+## Usage
+First, clone and navigate to the repository:
+```bash
+git clone https://github.com/manulife-gft/FinancialQA
+cd FinancialQA/
+```
+Then, install the package locally using ```pip```:
+```bash
+pip install -e .
+```
+<!-- __(coming soon...)__ Then, run the following to install the current release from the command line:
+```bash
+$ pip install financialqa
+``` -->
 
-Fill the required environment variables for the used services in a file named `.env` in your working directory so that it can be discovered by the `dotenv` package at runtime and loaded. The required environment variables are:
+Set the required environment variables shown below in a file named `.env` (in the ```FinancialQA/``` directory), so that it can be discovered and loaded by the `dotenv` package at runtime. The targeted PDF files must be hosted in an Azure Blob Storage container, as specified by the ```AZURE_STORAGE_*``` variables. The ```AZURE_AI_SEARCH_INDEX_NAME``` variable can be set to any name.
 
 ```bash
 AZURE_STORAGE_CONTAINER_NAME=""
 AZURE_STORAGE_CONTAINER_ACCOUNT=""
 AZURE_STORAGE_CONNECTION_STRING=""
 
-DOCUMENT_ENDPOINT=""
-DOCUMENT_KEY=""
+DOCUMENT_INTEL_KEY=""
+DOCUMENT_INTEL_ENDPOINT=""
 
-AZURE_AI_SEARCH_SERVICE_NAME=""
-AZURE_AI_SEARCH_INDEX_NAME=""
 AZURE_AI_SEARCH_KEY=""
+AZURE_AI_SEARCH_INDEX_NAME=""
+AZURE_AI_SEARCH_SERVICE_NAME=""
 
-OPENAI_API_BASE=""
 OPENAI_API_KEY=""
-OPENAI_API_VERSION=""
+OPENAI_API_BASE=""
 OPENAI_API_TYPE=""
+OPENAI_API_VERSION=""
 ```
-
-__(coming soon...)__ Then, run the following to install the current release from the command line:
-```bash
-$ pip install financialqa
-```
-The package can then be imported and used in a script:
+The ```financialqa``` package can then be imported and used in a script:
 ```python
-import financialqa
 from financialqa.ingestion.ingestionpipeline import IngestionPipeline
 
-from dotenv import load_dotenv
-load_dotenv()  # load environment variables
+ingestion_pipeline = IngestionPipeline()
 
-# Run a single test pdf through the ingestion pipeline
-ingestion_pipeline = IngestionPipeline(run_test_pdf='MFC_QPR_2023_Q4_EN.pdf')
-
-# Parse, chunk, and index extracted tables into Azure AI Search at once
+# Extract, parse, chunk, and index tables into Azure AI Search
 ingestion_pipeline.ingest_pdfs() 
 ```
 
@@ -68,12 +67,10 @@ Or run directly from the command line:
 $ python3 -m financialqa.ingestion.ingestionpipeline
 ```
 
-# To-do's
-* Apply PEP 8 style guide
-* Attach section header metadata to ingested tables
-* Include class docstrings
-* Specify install_packages dependencies in setup
-* Include more test cases
-* Improve logging
-* Include exception handling for API calls
+## To-do's
+* Implement batch uploading to index
+* Provide configurable parameters
+* Add proper class/method docstrings
+* Add unittest test cases
+* Add exception handling for API calls
 * Upload final copy to Python Package Index
