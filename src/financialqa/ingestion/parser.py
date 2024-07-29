@@ -1,35 +1,34 @@
 import os
 import sys
 import logging
-logging.basicConfig(    
-        # filename=logfile,    
-        level=logging.INFO,    
-        format="%(asctime)s %(levelname)s %(name)s line %(lineno)d  %(message)s",    
-        datefmt="%H:%M:%S")   
-import argparse
-from typing import Dict, List
 
-from azure.core.credentials import AzureKeyCredential
-from azure.ai.formrecognizer import DocumentAnalysisClient
 import numpy as np
 import pandas as pd
 
+from azure.core.credentials import AzureKeyCredential
+from azure.ai.formrecognizer import DocumentAnalysisClient
+
+logging.basicConfig(    
+    # filename=logfile,    
+    level=logging.INFO,    
+    format="%(asctime)s %(levelname)s %(name)s line %(lineno)d  %(message)s",    
+    datefmt="%H:%M:%S"
+)   
 logger = logging.getLogger(__name__)
 
-def parse_pdfs(report_contents) -> List[Dict[str, str]]:
+di_key = os.environ['DOCUMENT_INTEL_KEY']
+di_endpoint = os.environ['DOCUMENT_INTEL_ENDPOINT']
+
+def parse_pdfs(report_contents):
     """Parse PDF files from Azure Blob Storage container using Azure Document Intellignece."""
     result_dicts = []
-    logger.info('Parsing PDFs...')
-    logging.disable(logging.WARNING)
-
+    logger.info("Beginning to parse {0} PDFs...".format(len(report_contents.keys())))
     for report_name, report_content in report_contents.items():
-        endpoint = os.environ['DOCUMENT_ENDPOINT']
-        key = os.environ['DOCUMENT_KEY']
+        logger.info("Parsing PDF '{0}'...".format(report_name))
         document_analysis_client = DocumentAnalysisClient(
-            endpoint=endpoint, credential=AzureKeyCredential(key)
-            )
+            endpoint=di_endpoint, credential=AzureKeyCredential(di_key)
+        )
         report_blob_path = report_content.get('report_blob_path')
-
         if report_blob_path.startswith('http'):
             poller = document_analysis_client.begin_analyze_document_from_url(
                 'prebuilt-layout', report_blob_path)
@@ -44,13 +43,12 @@ def parse_pdfs(report_contents) -> List[Dict[str, str]]:
         result_dict['report_quarter'] = report_content.get('report_quarter')
         result_dict['report_blob_path'] = report_content.get('report_blob_path')
         result_dicts.append(result_dict)
-    logging.disable(logging.NOTSET)
     return result_dicts
 
 def page_text_and_tables(result_dicts):
     """Store extracted text and tables as values into a nested dictionary based on page number keys."""
+    logger.info("Storing parsed text and tables into a nested dictionary...")
     page_contents = []
-
     for result_dict in result_dicts:
         page_content = {'pages': {}}
         for paragraph in result_dict.get('paragraphs'):
@@ -93,24 +91,17 @@ def page_text_and_tables(result_dicts):
             df = df.drop(df.index[0])
             df.reset_index(inplace=True, drop=True)
             df.dropna(inplace=True)
-            # df = df.to_dict(orient="records")
+            df = df.to_dict(orient="records")
 
             if page_num in page_content['pages'].keys():
                 page_content['pages'][page_num].get('tables').append(df)
             else:
                 page_content['pages'][page_num] = {'tables': [df], 'text': []}
-            # _dedupe_text_from_tables(page_num, page_content, df)
 
         page_content['report_name'] = result_dict['report_name']
         page_content['company_name'] = result_dict['company_name']
         page_content['report_quarter'] = result_dict['report_quarter']
         page_content['report_blob_path'] = result_dict['report_blob_path']
         page_contents.append(page_content)
-    
+
     return page_contents
-
-
-def _dedupe_text_from_tables(page_num, page_content, df):
-    """Remove duplicate text from a table."""
-    page_content['pages'][page_num].get('text')[:] = \
-        [text for text in page_content['pages'][page_num].get('text') if text not in df.values]
