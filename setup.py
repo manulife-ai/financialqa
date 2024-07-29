@@ -17,10 +17,24 @@ setup(
         description=DESCRIPTION,
         long_description=LONG_DESCRIPTION,
         install_requires=[
-            ],
+            "openai==0.28.1",
+            "azure-ai-ml",
+            "azure.ai.formrecognizer",
+            "langchain",
+            "langchain-community==0.0.20",
+            "azure-search",
+            "azure-search-documents",
+            "python-dotenv",
+            "azure-core",
+            "tiktoken",
+        ],
         # packages=find_packages(),
         package_dir={"": "src"},
-        keywords=["python", "pdf parser", "pdf_indexer"],
+        keywords=[
+            "python", "azure", "pdf parser",
+            "pdf indexing", "table indexing", 
+            "financial question-answering"
+        ],
         classifiers= [
             "Development Status :: 3 - Alpha",
             "Intended Audience :: Education",
