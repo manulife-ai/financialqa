@@ -1,12 +1,11 @@
 from setuptools import setup, find_packages
 
 VERSION = "0.0.1" 
-DESCRIPTION = "Financial Report PDF Table Indexer"
+DESCRIPTION = "Financial Report PDF Indexing"
 LONG_DESCRIPTION = """
-    Parse, chunk, and index the tables and text from 
-    (financial report) PDF files into an Azure AI Search vector 
-    database for (financial data) tabular question-answering (QA) with
-    an LLM in a Retrieval Augmented Generation (RAG) framework.
+    Parse tables and text from (financial report) PDFs and upload them into an 
+    Azure AI Search index for (financial data) tabular question-answering (QA) 
+    with an LLM in a Retrieval Augmented Generation (RAG) framework.
     """
 
 setup(
@@ -27,6 +26,8 @@ setup(
             "python-dotenv",
             "azure-core",
             "tiktoken",
+            "pandas",
+            "numpy",
         ],
         # packages=find_packages(),
         package_dir={"": "src"},
