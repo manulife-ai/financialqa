@@ -46,13 +46,8 @@ class IngestionPipeline:
     """
     
     def __init__(self):
-        self.azure_search_key = os.environ['AZURE_AI_SEARCH_KEY']
-        self.azure_search_index_name = os.environ['AZURE_AI_SEARCH_INDEX_NAME']
-        self.azure_search_service_name = os.environ['AZURE_AI_SEARCH_SERVICE_NAME']
-        self.azure_storage_container_name = os.environ['AZURE_STORAGE_CONTAINER_NAME']
-        self.azure_storage_connection_string = os.environ['AZURE_STORAGE_CONNECTION_STRING']
-        self.azure_search_endpoint = "https://" + self.azure_search_service_name + ".search.windows.net"
         self.configure_logging()
+        self._load_api_vars()
         self.blob_storage_container = self._get_blob_container_client()
         self.search_client = self._get_search_client()
         self.embedding_model = self._get_embedding_model()
@@ -368,6 +363,16 @@ class IngestionPipeline:
         )
         embedding_model=embeddings.embed_query
         return embedding_model
+    
+    def _load_api_vars(self):
+        self.azure_search_key = os.getenv('AZURE_AI_SEARCH_KEY')
+        self.azure_search_index_name = os.getenv('AZURE_AI_SEARCH_INDEX_NAME')
+        self.azure_search_service_name = os.getenv('AZURE_AI_SEARCH_SERVICE_NAME')
+        self.azure_storage_container_name = os.getenv('AZURE_STORAGE_CONTAINER_NAME')
+        self.azure_storage_connection_string = os.getenv('AZURE_STORAGE_CONNECTION_STRING')
+        self.azure_search_endpoint = \
+            "https://" + self.azure_search_service_name + ".search.windows.net"
+        self.logger.info('Set API variables.')
 
 if __name__ == '__main__':
     # parser = argparse.ArgumentParser()
