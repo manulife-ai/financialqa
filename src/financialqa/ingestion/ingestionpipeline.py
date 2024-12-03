@@ -1,5 +1,6 @@
 import os
 import sys
+import json
 import logging
 import argparse
 
@@ -94,6 +95,40 @@ class IngestionPipeline:
                 'report_blob_path': report_blob_path,
             }
         return report_contents
+    
+    def add_chartvlm_docs(
+            self, 
+            chartvlm_output_filepath, 
+            company_list
+        ):
+        with open(chartvlm_output_filepath, "r") as file:
+            chartvlm_results = json.load(file)
+        chartvlm_docs = []
+        for chart_filename, chartvlm_result in chartvlm_results.items():
+            company_name = chart_filename.split('/')[-1].split('_')[0]
+            if company_name in company_list:
+                company_name = company_name.upper()
+                if company_name.lower() == 'manulife':
+                    company_name = 'MFC'
+                chart_title = chartvlm_result.get('title')
+                chartvlm_table_json = chartvlm_result.get('json')
+                chartvlm_docs.append(
+                    Document(
+                        page_content=str(chartvlm_result),
+                        metadata={
+                            'text': chart_title.strip(), 
+                            'page_num': 'N/A',
+                            'company_name': company_name,
+                            'report_quarter': 'N/A',
+                            'report_blob_path': 'N/A',
+                            'page_titles': 'N/A',
+                            'page_headers': 'N/A',
+                            'section_headers': 'N/A',
+                            'page_footers': 'N/A',
+                            }
+                        )
+                    )
+        return chartvlm_docs
     
     def convert_pages_to_table_docs(self, paged_text_and_tables, metadata_page_span=1):
         """Create LangChain Document objects from extracted tables and text."""
