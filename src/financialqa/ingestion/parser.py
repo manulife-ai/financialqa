@@ -6,7 +6,14 @@ import numpy as np
 import pandas as pd
 
 from azure.core.credentials import AzureKeyCredential
-from azure.ai.formrecognizer import DocumentAnalysisClient
+from azure.ai.documentintelligence import DocumentIntelligenceClient
+from azure.ai.documentintelligence.models import AnalyzeResult, AnalyzeDocumentRequest
+
+"""
+To-do's:
+    - Add report metadata to DocumentIntelligence version of parse_pdfs() 
+    - Include azure.ai.documentintelligence in setup.py
+"""
 
 logging.basicConfig(    
     # filename=logfile,    
@@ -16,92 +23,103 @@ logging.basicConfig(
 )   
 logger = logging.getLogger(__name__)
 
-di_key = os.environ['DOCUMENT_INTEL_KEY']
-di_endpoint = os.environ['DOCUMENT_INTEL_ENDPOINT']
+azure_docintel_key = os.getenv('AZURE_DOCINTEL_KEY')
+azure_docintel_endpoint = os.getenv('AZURE_DOCINTEL_ENDPOINT')
+azure_docintel_version = os.getenv('AZURE_DOCINTEL_VERSION')
 
-def parse_pdfs(report_contents):
-    """Parse PDF files from Azure Blob Storage container using Azure Document Intellignece."""
-    result_dicts = []
-    logger.info("Beginning to parse {0} PDFs...".format(len(report_contents.keys())))
-    for report_name, report_content in report_contents.items():
-        logger.info("Parsing PDF '{0}'...".format(report_name))
-        document_analysis_client = DocumentAnalysisClient(
-            endpoint=di_endpoint, credential=AzureKeyCredential(di_key)
-        )
-        report_blob_path = report_content.get('report_blob_path')
-        if report_blob_path.startswith('http'):
-            poller = document_analysis_client.begin_analyze_document_from_url(
-                'prebuilt-layout', report_blob_path)
-        else:
-            with open(report_blob_path, 'rb') as f:
-                poller = document_analysis_client.begin_analyze_document(
-                    'prebuilt-layout', document=f)
-        result = poller.result()
-        result_dict = result.to_dict() # Returns a dict representation of AnalyzeResult.
-        result_dict['report_name'] = report_name
-        result_dict['company_name'] = report_content.get('company_name')
-        result_dict['report_quarter'] = report_content.get('report_quarter')
-        result_dict['report_blob_path'] = report_content.get('report_blob_path')
-        result_dicts.append(result_dict)
-    return result_dicts
+def parse_pdfs(pdf_paths):
+    document_intelligence_client = DocumentIntelligenceClient(
+        endpoint=os.environ['AZURE_DOCINTEL_ENDPOINT'], 
+        credential=AzureKeyCredential(os.environ['AZURE_DOCINTEL_KEY'])
+    )
+    results_dict = {}
+    for pdf_path in pdf_paths:
+        with open(pdf_path, "rb") as f:
+            poller = document_intelligence_client.begin_analyze_document(
+                "prebuilt-layout", analyze_request=f, content_type="application/octet-stream"
+            )
+            result_dict: AnalyzeResult = poller.result()    
+        pdf_name = pdf_path.split('/')[-1].replace('.pdf', '')
+        results_dict.update({pdf_name:result_dict})
+    return results_dict
 
-def page_text_and_tables(result_dicts):
-    """Store extracted text and tables as values into a nested dictionary based on page number keys."""
-    logger.info("Storing parsed text and tables into a nested dictionary...")
-    page_contents = []
-    for result_dict in result_dicts:
-        page_content = {'pages': {}}
+def page_text_tables_and_figures(results_dict):
+    pdf_pages_dict = dict()
+    text_table_chart_dict = {'pages': {}}
+    for pdf_name, result_dict in results_dict.items():
         for paragraph in result_dict.get('paragraphs'):
-            page_num = paragraph.get('bounding_regions')[0].get('page_number')
-            if page_num in page_content['pages'].keys():
-                page_content['pages'][page_num].get('text').append(paragraph.get('content'))
+            page_num = paragraph.get('boundingRegions')[0].get('pageNumber')
+            if page_num in text_table_chart_dict['pages'].keys():
+                text_table_chart_dict['pages'][page_num].get('text').append(paragraph.get('content'))
             else:
-                page_content['pages'][page_num] = {'tables': [], 'text': [paragraph.get('content')]}
-
-            if paragraph['role'] is not None:
-                if paragraph['role'] in page_content['pages'][page_num].keys():
-                    page_content['pages'][page_num][paragraph['role']].append(paragraph.get('content'))
+                text_table_chart_dict['pages'][page_num] = {'text': [], 'tables': [paragraph.get('content')]}
+            if 'role' in paragraph.keys():
+                if paragraph['role'] in text_table_chart_dict['pages'][page_num].keys():
+                    text_table_chart_dict['pages'][page_num][paragraph['role']].append(paragraph.get('content'))
                 else:
-                    page_content['pages'][page_num][paragraph['role']] = [paragraph.get('content')]
+                    text_table_chart_dict['pages'][page_num][paragraph['role']] = [paragraph.get('content')]
                 # Remove duplicate text roles from text
-                for role in page_content['pages'][page_num][paragraph['role']]:
-                    if role in page_content['pages'][page_num]['text']:
-                        page_content['pages'][page_num]['text'].remove(role)
+                for role in text_table_chart_dict['pages'][page_num][paragraph['role']]:
+                    if role in text_table_chart_dict['pages'][page_num]['text']:
+                        text_table_chart_dict['pages'][page_num]['text'].remove(role)
 
-        for table in result_dict['tables']:
-            page_num = table.get('bounding_regions')[0].get('page_number')
-            row_count = table['row_count']
-            column_count = table['column_count']
+        for table in result_dict.get('tables'):
+            page_num = table.get('boundingRegions')[0].get('pageNumber')
+            row_count = table['rowCount']
+            column_count = table['columnCount']
             arr = np.empty((row_count, column_count), dtype=object)
             arr[0][:] = ''
-
             for cell in table['cells']:
-            # Handles nested headers
                 # Remove duplicate table cell values from text
-                if cell['content'] in page_content['pages'][page_num]['text']:
-                    page_content['pages'][page_num]['text'].remove(cell['content'])
-                if cell['kind'] == 'columnHeader':
-                    arr[0][cell['column_index']:cell['column_index'] +
-                        cell['column_span']] += ' ' + str(cell['content'])
+                if cell['content'] in text_table_chart_dict['pages'][page_num]['text']:
+                    text_table_chart_dict['pages'][page_num]['text'].remove(cell['content'])
+                if 'kind' in cell.keys():
+                    # Handles nested headers
+                    if cell['kind'] == 'columnHeader':
+                        if cell.get('spans'):
+                            column_span_length = cell.get('spans')[0].get('length')
+                        else:
+                            column_span_length = 0
+                        arr[0][
+                            cell['columnIndex']:
+                            cell['columnIndex'] + column_span_length
+                        ] += ' ' + str(cell['content'])
                 else:
-                    arr[cell['row_index']][cell['column_index']] = cell['content']
-
+                    arr[cell['rowIndex']][cell['columnIndex']] = cell['content']
             df = pd.DataFrame(arr)
             df.columns = df.iloc[0]
             df = df.drop(df.index[0])
             df.reset_index(inplace=True, drop=True)
             df.dropna(inplace=True)
             df = df.to_dict(orient="records")
-
-            if page_num in page_content['pages'].keys():
-                page_content['pages'][page_num].get('tables').append(df)
+            if page_num in text_table_chart_dict['pages'].keys():
+                text_table_chart_dict['pages'][page_num].get('tables').append(df)
             else:
-                page_content['pages'][page_num] = {'tables': [df], 'text': []}
+                text_table_chart_dict['pages'][page_num] = {'text': [], 'tables': [df]}
+        pdf_pages_dict.update({pdf_name: text_table_chart_dict})
 
-        page_content['report_name'] = result_dict['report_name']
-        page_content['company_name'] = result_dict['company_name']
-        page_content['report_quarter'] = result_dict['report_quarter']
-        page_content['report_blob_path'] = result_dict['report_blob_path']
-        page_contents.append(page_content)
-
-    return page_contents
+        for figures in results_dict[pdf_name].get('figures'):
+            figure_bounding_regions = figures.get('boundingRegions')
+            for i, bounding_regions in enumerate(
+                    figure_bounding_regions, start=1):
+                bounding_regions_polygon = bounding_regions.get('polygon')
+                page_num = bounding_regions.get('pageNumber')
+                if page_num not in text_table_chart_dict.get('pages').keys():
+                    text_table_chart_dict['pages'].update({page_num: {'figures': {}}})
+                elif 'figures' not in text_table_chart_dict.get('pages').get(page_num):
+                    text_table_chart_dict['pages'].get(page_num).update({'figures': {}})
+                figure_file_name = f'figure_{i}_page_{page_num}'
+                if 'caption' in figures.keys():
+                    text_table_chart_dict['pages'][page_num].get('figures').update({
+                        figure_file_name: {
+                            'bounding_regions_polygon': bounding_regions_polygon,
+                            'caption': figures.get('caption').get('content'),
+                        }
+                    })
+                else:
+                    text_table_chart_dict['pages'][page_num]['figures'].update({
+                        figure_file_name: {
+                            'bounding_regions_polygon': bounding_regions_polygon,
+                        }
+                    })
+    return pdf_pages_dict
