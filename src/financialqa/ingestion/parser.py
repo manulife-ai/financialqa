@@ -11,7 +11,6 @@ from azure.ai.documentintelligence.models import AnalyzeResult, AnalyzeDocumentR
 
 """
 To-do's:
-    - Add report metadata to DocumentIntelligence version of parse_pdfs() 
     - Include azure.ai.documentintelligence in setup.py
 """
 
@@ -32,21 +31,37 @@ def parse_pdfs(pdf_paths):
         endpoint=os.environ['AZURE_DOCINTEL_ENDPOINT'], 
         credential=AzureKeyCredential(os.environ['AZURE_DOCINTEL_KEY'])
     )
-    results_dict = {}
+    parsed_pdfs_dict = {}
     for pdf_path in pdf_paths:
         with open(pdf_path, "rb") as f:
             poller = document_intelligence_client.begin_analyze_document(
-                "prebuilt-layout", analyze_request=f, content_type="application/octet-stream"
+                "prebuilt-layout", 
+                analyze_request=f,
+                content_type="application/octet-stream",
             )
-            result_dict: AnalyzeResult = poller.result()    
+            pdf_docintel_result_dict: AnalyzeResult = poller.result()    
         pdf_name = pdf_path.split('/')[-1].replace('.pdf', '')
-        results_dict.update({pdf_name:result_dict})
-    return results_dict
+        pdf_name_parts = pdf_name.split('_')
+        company_name = pdf_name_parts[0]
+        report_quarter = pdf_name_parts[-1]
+        parsed_pdfs_dict[pdf_name] = {
+            'company_name': company_name, 
+            'report_quarter': report_quarter,
+            'result_dict': pdf_docintel_result_dict,
+        }
+    return parsed_pdfs_dict
 
-def page_text_tables_and_figures(results_dict):
+def page_pdf_contents(results_dict):
     pdf_pages_dict = dict()
-    text_table_chart_dict = {'pages': {}}
-    for pdf_name, result_dict in results_dict.items():
+    for pdf_name, pdf_items in results_dict.items():
+        result_dict = pdf_items.get('result_dict')
+        company_name = pdf_items.get('company_name') 
+        report_quarter = pdf_items.get('report_quarter') 
+        text_table_chart_dict = {
+            'pages': {}, 
+            'company_name': company_name,
+            'report_quarter': report_quarter,
+        }
         for paragraph in result_dict.get('paragraphs'):
             page_num = paragraph.get('boundingRegions')[0].get('pageNumber')
             if page_num in text_table_chart_dict['pages'].keys():
@@ -98,10 +113,11 @@ def page_text_tables_and_figures(results_dict):
                 text_table_chart_dict['pages'][page_num] = {'text': [], 'tables': [df]}
         pdf_pages_dict.update({pdf_name: text_table_chart_dict})
 
-        for figures in results_dict[pdf_name].get('figures'):
+        for figures in result_dict.get('figures'):
             figure_bounding_regions = figures.get('boundingRegions')
             for i, bounding_regions in enumerate(
-                    figure_bounding_regions, start=1):
+                    figure_bounding_regions, start=1
+                    ):
                 bounding_regions_polygon = bounding_regions.get('polygon')
                 page_num = bounding_regions.get('pageNumber')
                 if page_num not in text_table_chart_dict.get('pages').keys():
