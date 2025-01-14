@@ -6,6 +6,7 @@ import logging
 import argparse
 
 from PyPDF2 import PdfReader, PdfWriter
+from pdf2image import convert_from_path
 from langchain.docstore.document import Document
 from langchain_openai import AzureOpenAIEmbeddings, OpenAIEmbeddings
 from langchain_community.vectorstores.azuresearch import AzureSearch
@@ -41,6 +42,7 @@ To-do's:
     - Find alternative method to load PDF paths from Azure Blob storage with 
         newer DocumentIntelligenceClient class
     - Optionally save PDF cropped images as JPEG
+    - Include PyPDF2, pdf2image to setup
 '''
 
 class IngestionPipeline:
@@ -138,7 +140,9 @@ class IngestionPipeline:
     def crop_images_from_pdfs(
             self, 
             pdf_pages_dict, 
-            overwrite_images=False
+            save_as_jpg=False,
+            overwrite_pdf_images=False,
+            overwrite_jpg_images=False,
         ):
         """
         Crop and save images from PDFs using PyPDF2 with bounding box coordinates
@@ -191,10 +195,29 @@ class IngestionPipeline:
                         print(f"Creating a directory '{output_dir}' to save outputs...")
                         os.makedirs(output_dir)
                     output_path = os.path.join(output_dir, figure_name + '.pdf')
-                    if overwrite_images:
+                    if overwrite_pdf_images:
                         with open(output_path, 'wb') as out_f:
                             writer.write(out_f)
-        
+                    if save_as_jpg:
+                        jpg_output_folder = os.path.join(
+                            '../data/outputs', 
+                            pdf_name, 
+                            'jpg_outputs'
+                        )
+                        if not os.path.isdir(jpg_output_folder):   
+                            print(f"Creating a directory '{jpg_output_folder}' to save JPEG outputs...")
+                            os.makedirs(jpg_output_folder)
+                        images = convert_from_path(
+                            output_path,
+                            fmt='JPEG',
+                            output_folder=jpg_output_folder,
+                        )
+                        if overwrite_jpg_images:
+                            for img in images:
+                                jpg_file_path = os.path.join(jpg_output_folder, figure_name + '.jpg')
+                                print(f"Saving PDF '{pdf_name}' as JPEG to folder '{jpg_output_folder}'.")
+                                img.save(fp=jpg_file_path)
+
     def convert_paged_pdf_contents_to_docs(
             self, 
             paged_pdf_contents,
