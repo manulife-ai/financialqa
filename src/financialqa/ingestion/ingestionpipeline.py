@@ -7,7 +7,7 @@ import argparse
 
 from PyPDF2 import PdfReader, PdfWriter
 from langchain.docstore.document import Document
-from langchain_community.embeddings import OpenAIEmbeddings
+from langchain_openai import AzureOpenAIEmbeddings, OpenAIEmbeddings
 from langchain_community.vectorstores.azuresearch import AzureSearch
 from langchain.text_splitter import TokenTextSplitter, CharacterTextSplitter
 
@@ -26,7 +26,6 @@ from azure.search.documents.indexes.models import (
     HnswAlgorithmConfiguration,
     VectorSearchAlgorithmMetric,
 )
-
 
 from dotenv import load_dotenv
 load_dotenv(override=True)
@@ -65,7 +64,7 @@ class IngestionPipeline:
         httpx_logger.setLevel(logging.WARNING)  # Set the httpx logging level to WARNING to suppress Azure INFO logs
         self.logger = logging.getLogger(__name__)  
         logging.basicConfig(        
-            level=logging.INFO,    
+            level=logging.WARNING,    
             format="%(asctime)s %(levelname)s %(name)s line %(lineno)d  %(message)s",    
             datefmt="%H:%M:%S",
             force=True,
@@ -195,7 +194,7 @@ class IngestionPipeline:
                     if overwrite_images:
                         with open(output_path, 'wb') as out_f:
                             writer.write(out_f)
-
+        
     def convert_paged_pdf_contents_to_docs(
             self, 
             paged_pdf_contents,
@@ -283,7 +282,9 @@ class IngestionPipeline:
                     name="content_vector",
                     type=SearchFieldDataType.Collection(SearchFieldDataType.Single),
                     searchable=True,
-                    vector_search_dimensions=len(self.embedding_model("Text")),
+                    vector_search_dimensions=len(
+                        self.embedding_model.embed_query("Text")
+                    ),
                     # vector_search_configuration="default",
                     vector_search_profile_name="finqaHnsw",
                 ),
@@ -373,8 +374,9 @@ class IngestionPipeline:
                 azure_search_endpoint=self.azure_search_endpoint,
                 azure_search_key=self.azure_search_key,
                 index_name=self.azure_search_index_name,
-                embedding_function=self.embedding_model,
+                embedding_function=self.embedding_model.embed_query,
                 fields=fields,
+                additional_search_client_options={"retry_total": 4},
                 vector_search=vector_search,
             )
             if add_docs is not None:
@@ -425,18 +427,17 @@ class IngestionPipeline:
 
     def _get_embedding_model(self):
         """Instantiate OpenAI embedding model."""
-        openai_api_deployment = "text-embedding-ada-002"
+        openai_api_deployment = "text-embedding-3-small"
         self.logger.info("Getting OpenAI embedding model {0}'...".format(openai_api_deployment))
-        embeddings = OpenAIEmbeddings(
+        embeddings = AzureOpenAIEmbeddings(
             deployment=openai_api_deployment,
-            openai_api_base=os.environ['OPENAI_API_BASE'],
-            openai_api_type=os.environ['OPENAI_API_TYPE'],
-            openai_api_key=os.environ['OPENAI_API_KEY'],
-            openai_api_version=os.environ['OPENAI_API_VERSION'],
-            # chunk_size = 1
+            azure_endpoint=os.environ['AZURE_ENDPOINT'],
+            openai_api_version=os.environ['AZURE_OPENAI_API_VERSION'],
+            # openai_api_key=os.environ['OPENAI_API_KEY'],
+            show_progress_bar=True,
+            chunk_size = 1
         )
-        embedding_model=embeddings.embed_query
-        return embedding_model
+        return embeddings
     
     def _load_api_vars(self):
         self.azure_search_key = os.getenv('AZURE_AI_SEARCH_KEY')
