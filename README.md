@@ -1,12 +1,12 @@
-# Financial Report PDF Indexing
-Parse tables and text from (financial report) PDFs and upload them into an Azure AI Search index for (financial data) tabular question-answering (QA) with an LLM in a Retrieval Augmented Generation (RAG) framework.
+# Financial Report PDF Parser
+Parse text, tables, and figures from (financial report) PDFs and upload them into an (Azure AI Search) index for (financial data) tabular question-answering (QA) with an LLM in a Retrieval Augmented Generation (RAG) framework.
 
 ## Features
-* Effective parsing of tables and text from PDFs stored in an Azure Blob Storage container using Azure Document Intelligence
+* Effective parsing of text, tables, and figures from PDFs stored in an Azure Blob Storage container using Azure Document Intelligence
 <!-- ```python
 {page_num: {'text': [extracted_text], 'tables': [extracted_tables]}
 ``` -->
-* Document object creation with surrounding text metadata and chunking using ```LangChain``` functionality
+* Document object creation and chunking using ```LangChain``` functionality
 * Document embedding generation using Azure OpenAI and insertion into an Azure AI Search index
 
 ![Features](ingestion.PNG)
@@ -57,7 +57,7 @@ from financialqa.ingestion.ingestionpipeline import IngestionPipeline
 
 ingestion_pipeline = IngestionPipeline()
 
-# Extract, parse, chunk, and index tables into Azure AI Search
+# Parse PDFs, create and chunk Document objects, and insert Documents into an Azure AI Search index
 ingestion_pipeline.ingest_pdfs() 
 ```
 
@@ -68,9 +68,11 @@ $ python3 -m financialqa.ingestion.ingestionpipeline
 ```
 
 ## To-do's
-* Implement batch uploading to index
-* Provide configurable parameters
-* Add proper class/method docstrings
+* Implement batch embedding and indexing
+* Add inference module
+* Add Azure Key Vault option for loading API keys
+* Provide options when running from command line
 * Add unittest test cases
 * Add exception handling for API calls
+* Apply PEP 8 style guide (syntax formatting, docstrings, etc.)
 * Upload final copy to Python Package Index
