@@ -1,10 +1,10 @@
 from setuptools import setup, find_packages
 
-VERSION = "0.0.1" 
-DESCRIPTION = "Financial Report PDF Indexing"
+VERSION = "0.0.2" 
+DESCRIPTION = "Financial Report PDF Parser and Indexer"
 LONG_DESCRIPTION = """
-    Parse tables and text from (financial report) PDFs and upload them into an 
-    Azure AI Search index for (financial data) tabular question-answering (QA) 
+    Parse text, tables, and charts from (financial report) PDFs and upload 
+    them into an Azure AI Search index for (financial data) question-answering (QA) 
     with an LLM in a Retrieval Augmented Generation (RAG) framework.
     """
 
@@ -16,25 +16,31 @@ setup(
         description=DESCRIPTION,
         long_description=LONG_DESCRIPTION,
         install_requires=[
-            "openai==0.28.1",
+            "openai",
             "azure-ai-ml",
-            "azure.ai.formrecognizer",
-            "langchain",
-            "langchain-community==0.0.20",
+            "azure.ai.documentintelligence",
+            "azure-core",
+            "azure-identity",
+            "azure-keyvault",
             "azure-search",
             "azure-search-documents",
             "python-dotenv",
-            "azure-core",
+            "langchain",
+            "langchain-openai",
+            "langchain-community",
             "tiktoken",
             "pandas",
             "numpy",
+            "pypdf2",
+            "pdf2image",
         ],
-        # packages=find_packages(),
         package_dir={"": "src"},
         keywords=[
             "python", "azure", "pdf parser",
-            "pdf indexing", "table indexing", 
-            "financial question-answering"
+            "text parser", "table parser",
+            "chart parser", "chart extractor", 
+            "pdf question-answering",
+            "financial question-answering",
         ],
         classifiers= [
             "Development Status :: 3 - Alpha",
