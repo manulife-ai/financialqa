@@ -7,11 +7,10 @@ import pandas as pd
 
 from azure.core.credentials import AzureKeyCredential
 from azure.ai.documentintelligence import DocumentIntelligenceClient
-from azure.ai.documentintelligence.models import AnalyzeResult, AnalyzeDocumentRequest
+from azure.ai.documentintelligence.models import AnalyzeResult, DocumentAnalysisFeature
 
 """
 To-do's:
-    - Include azure.ai.documentintelligence in setup.py
 """
 
 logging.basicConfig(    
@@ -36,7 +35,8 @@ def parse_pdfs(pdf_paths):
         with open(pdf_path, "rb") as f:
             poller = document_intelligence_client.begin_analyze_document(
                 "prebuilt-layout", 
-                analyze_request=f,
+                body=f,
+                features=[DocumentAnalysisFeature.KEY_VALUE_PAIRS],
                 content_type="application/octet-stream",
             )
             pdf_docintel_result_dict: AnalyzeResult = poller.result()    
