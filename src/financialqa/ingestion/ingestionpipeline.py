@@ -1,6 +1,7 @@
 import os
 import sys
 import json
+import time
 import copy
 import logging
 import argparse
@@ -226,7 +227,7 @@ class IngestionPipeline:
         lang_doc_text = []
         lang_doc_tables = []
         lang_doc_charts = []
-        self.logger.info('Converting extracted PDF page contents to LangChain Documents...')
+        self.logger.info('Converting extracted PDF page contents to Document objects..')
         for pdf_name, pdf_items in paged_pdf_contents.items():
             company_name = pdf_items.get('company_name')
             report_quarter = pdf_items.get('report_quarter')
@@ -283,19 +284,13 @@ class IngestionPipeline:
             if page_content.get('pageFooter') is not None:
                 lang_doc_text[-1].metadata['page_footers'] = ', '.join(page_content.get('pageFooter'))
                 lang_doc_tables[-1].metadata['page_footers'] = ', '.join(page_content.get('pageFooter'))
-        self.logger.info("Created {0} text Documents.".format(len(lang_doc_text)))
-        self.logger.info("Created {0} table Documents.".format(len(lang_doc_tables)))
-        self.logger.info("Created {0} chart Documents.".format(len(lang_doc_charts)))
+        self.logger.info("Created {0} text Documents".format(len(lang_doc_text)))
+        self.logger.info("Created {0} table Documents".format(len(lang_doc_tables)))
+        self.logger.info("Created {0} chart Documents".format(len(lang_doc_charts)))
         return lang_doc_text, lang_doc_tables, lang_doc_charts
     
     def chunk_docs(self, lang_docs, chunk_size=400):
         """Chunk list of Document objects."""
-        self.logger.info(
-            'Chunking {0} Documents with a token chunk size of {1}...'.\
-                format(len(lang_docs), 
-                chunk_size
-                )
-            )
         text_splitter = TokenTextSplitter(chunk_size=chunk_size, chunk_overlap=0)
         # text_splitter = CharacterTextSplitter(chunk_size=chunk_size, chunk_overlap=0)
         lang_doc_chunks = text_splitter.split_documents(lang_docs)
@@ -304,18 +299,38 @@ class IngestionPipeline:
         )
         return lang_doc_chunks
     
-    def get_search_index(self, add_docs=None, overwrite_index=False):
-        """Get a specific search index instance with an option to add more Documents to it."""
-        self.logger.info("Getting Azure AI Search index '{0}'...".format(self.azure_search_index_name))
+    def get_search_index(
+            self, 
+            upload_docs=None, 
+            upload_docs_in_batches=False,
+            batch_size=50,
+            overwrite_index=False,
+        ):
+        """
+        Get an Azure AI Search index with an option to upload Documents to it.
+        """
+        self.logger.info("Getting index '{0}' from AI Search service '{1}'..".\
+                        format(
+                            self.azure_search_index_name,
+                            self.azure_search_service_name,
+                        ))
         try:
             self.search_client.get_index(self.azure_search_index_name)
         except:
-            self.logger.info("Did not find existing index '{0}' in search service {1}.".\
-                    format(self.azure_search_index_name, self.azure_search_service_name))
+            self.logger.info(
+                "Did not find index '{0}' in service {1}".\
+                    format(
+                        self.azure_search_index_name, 
+                        self.azure_search_service_name
+                    ))
             index_exists = 0
         else:
-            self.logger.info("Found existing index '{0}' in search service {1}.".\
-                    format(self.azure_search_index_name, self.azure_search_service_name))
+            self.logger.info(
+                "Found existing index '{0}' in search service '{1}'".\
+                    format(
+                        self.azure_search_index_name, 
+                        self.azure_search_service_name
+                    ))
             index_exists = 1
         finally:
             # default field names see https://python.langchain.com/docs/integrations/vectorstores/azuresearch/
@@ -417,13 +432,15 @@ class IngestionPipeline:
             )
             if overwrite_index:
                 if index_exists:
-                    self.logger.info("Found an existing index named '{0}' in search service '{1}' to overwrite.".
-                        format(self.azure_search_index_name, self.azure_search_service_name))
+                    self.logger.info("Overwriting index '{0}'".\
+                        format(
+                            self.azure_search_index_name, 
+                            self.azure_search_service_name
+                        ))
                     self.search_client.delete_index(self.azure_search_index_name)
                 else:
-                    self.logger.info("Did not find an existing index named '{0}' in search service {1} to overwrite.".
-                        format(self.azure_search_index_name, self.azure_search_service_name))
-            acs_vector_store = AzureSearch(
+                    self.logger.info("Did not find index to overwrite.")
+            ai_search_index = AzureSearch(
                 azure_search_endpoint=self.azure_search_endpoint,
                 azure_search_key=self.azure_search_key,
                 index_name=self.azure_search_index_name,
@@ -432,17 +449,56 @@ class IngestionPipeline:
                 additional_search_client_options={"retry_total": 4},
                 vector_search=vector_search,
             )
-            if add_docs is not None:
-                import time
-                t = time.time()
-                self.logger.info("Attempting to add {0} Documents to index '{1}'...".format(
-                    len(add_docs), self.azure_search_index_name)
-                )
-                acs_vector_store.add_documents(documents=add_docs)
-                self.logger.info("A total of {0} Documents were successfully added to index '{1}' in {2}s.".\
-                    format(len(add_docs), self.azure_search_index_name, round(time.time() - t))
-                )
-        return acs_vector_store
+            if upload_docs is not None:
+                if upload_docs_in_batches:
+                    doc_batches = [
+                        upload_docs[i:i+batch_size] for i in range(
+                            0, len(upload_docs), batch_size)
+                        ]
+                    for doc_batch in doc_batches:
+                        tot_time = time.time()
+                        try:
+                            batch_time = time.time()
+                            self.logger.info("Attempting to upload batch of {0} Documents to index '{1}'..".\
+                                format(
+                                    len(doc_batch), 
+                                    self.azure_search_index_name
+                                ))
+                            ai_search_index.add_documents(documents=upload_docs)
+                            self.logger.info("Successfully uploaded batch of {0} Documents to index '{1}' in {2} seconds".\
+                                format(
+                                    len(doc_batch), 
+                                    self.azure_search_index_name, 
+                                    round(time.time() - batch_time)
+                                ))
+                        except: 
+                            self.logger.info("Unable to upload batch of {0} Documents to index '{1}'. Trying again.".\
+                                format(
+                                    len(doc_batch), 
+                                    self.azure_search_index_name, 
+                                ))
+                        else:
+                            self.logger.info("Successfully uploaded a total of {0} Documents to index '{1}' in {2} seconds".\
+                                format(
+                                    len(doc_batch), 
+                                    self.azure_search_index_name, 
+                                    round(time.time() - tot_time)
+                                ))
+                else:
+                    self.logger.info("Attempting to upload {0} Documents to index '{1}'..".\
+                        format(
+                            len(upload_docs), 
+                            self.azure_search_index_name
+                        ))
+                    t = time.time()
+                    ai_search_index.add_documents(documents=upload_docs)
+                    self.logger.info("Successfully uploaded {0} Documents to index '{1}' in {2} seconds".\
+                        format(
+                            len(upload_docs), 
+                            self.azure_search_index_name, 
+                            round(time.time() - t)
+                        ))
+        return ai_search_index
 
     def ingest_pdfs(
             self, 
@@ -487,7 +543,7 @@ class IngestionPipeline:
             azure_endpoint=os.environ['AZURE_ENDPOINT'],
             openai_api_version=os.environ['AZURE_OPENAI_API_VERSION'],
             # openai_api_key=os.environ['OPENAI_API_KEY'],
-            show_progress_bar=True,
+            # show_progress_bar=True,
             chunk_size = 1
         )
         return embeddings
