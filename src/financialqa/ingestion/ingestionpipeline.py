@@ -63,14 +63,14 @@ class IngestionPipeline:
         logger.setLevel(logging.CRITICAL)
         httpx_logger = logging.getLogger('httpx')  
         httpx_logger.setLevel(logging.WARNING)  # Set the httpx logging level to WARNING to suppress Azure INFO logs
-        self.logger = logging.getLogger(__name__)  
         logging.basicConfig(        
-            level=logging.WARNING,    
+            level=logging.INFO,    
             format="%(asctime)s %(levelname)s %(name)s line %(lineno)d  %(message)s",    
             datefmt="%H:%M:%S",
             force=True,
         )  
-        self.logger.info('Configured logging.')
+        self.logger = logging.getLogger(__name__)  
+        self.logger.info('Configured logging')
 
     def extract_report_contents(self, load_from_local=False):
         """Extract blob reports from Azure Blob Storage container."""
@@ -80,8 +80,7 @@ class IngestionPipeline:
                 format(
                     len(select_files),
                     self.azure_storage_container_name,
-                )
-        )
+                ))
         for blob in self.blob_storage_container.list_blobs():
             if select_files and blob.name not in select_files:
                 continue
@@ -224,9 +223,9 @@ class IngestionPipeline:
             convert_charts=True,
         ):
         """Create LangChain Document objects from extracted PDF contents."""
-        lang_doc_text = []
-        lang_doc_tables = []
-        lang_doc_charts = []
+        text_docs = []
+        table_docs = []
+        chart_docs = []
         self.logger.info('Converting extracted PDF page contents to Document objects..')
         for pdf_name, pdf_items in paged_pdf_contents.items():
             company_name = pdf_items.get('company_name')
@@ -235,7 +234,7 @@ class IngestionPipeline:
             for page_num, page_content in pages.items():
                 # Convert text content by default
                 text_content = preprocess_text(' '.join(page_content.get('text')))
-                lang_doc_text.append(
+                text_docs.append(
                     Document(
                         page_content=text_content,
                         metadata={
@@ -253,7 +252,7 @@ class IngestionPipeline:
                     )
                 if convert_tables:
                     for table in page_content.get('tables'):
-                        lang_doc_tables.append(
+                        table_docs.append(
                             Document(
                                 page_content=str(table),
                                 metadata={
@@ -273,28 +272,31 @@ class IngestionPipeline:
                 if convert_charts:
                     pass 
             if page_content.get('title') is not None:
-                lang_doc_text[-1].metadata['page_titles'] = ', '.join(page_content.get('title'))
-                lang_doc_tables[-1].metadata['page_titles'] = ', '.join(page_content.get('title'))
+                text_docs[-1].metadata['page_titles'] = ', '.join(page_content.get('title'))
+                table_docs[-1].metadata['page_titles'] = ', '.join(page_content.get('title'))
             if page_content.get('pageHeader') is not None:
-                lang_doc_text[-1].metadata['page_headers'] = ', '.join(page_content.get('pageHeader'))
-                lang_doc_tables[-1].metadata['page_headers'] = ', '.join(page_content.get('pageHeader'))
+                text_docs[-1].metadata['page_headers'] = ', '.join(page_content.get('pageHeader'))
+                table_docs[-1].metadata['page_headers'] = ', '.join(page_content.get('pageHeader'))
             if page_content.get('sectionHeader') is not None:
-                lang_doc_text[-1].metadata['section_headers'] = ', '.join(page_content.get('sectionHeader'))
-                lang_doc_tables[-1].metadata['section_headers'] = ', '.join(page_content.get('sectionHeader'))
+                text_docs[-1].metadata['section_headers'] = ', '.join(page_content.get('sectionHeader'))
+                table_docs[-1].metadata['section_headers'] = ', '.join(page_content.get('sectionHeader'))
             if page_content.get('pageFooter') is not None:
-                lang_doc_text[-1].metadata['page_footers'] = ', '.join(page_content.get('pageFooter'))
-                lang_doc_tables[-1].metadata['page_footers'] = ', '.join(page_content.get('pageFooter'))
-        self.logger.info("Created {0} text Documents".format(len(lang_doc_text)))
-        self.logger.info("Created {0} table Documents".format(len(lang_doc_tables)))
-        self.logger.info("Created {0} chart Documents".format(len(lang_doc_charts)))
-        return lang_doc_text, lang_doc_tables, lang_doc_charts
+                text_docs[-1].metadata['page_footers'] = ', '.join(page_content.get('pageFooter'))
+                table_docs[-1].metadata['page_footers'] = ', '.join(page_content.get('pageFooter'))
+        self.logger.info(
+            "Created {0} text Documents, {1} table Documents, and {2} chart Documents".format(
+                len(text_docs), 
+                len(table_docs), 
+                len(chart_docs)
+            ))
+        return text_docs, table_docs, chart_docs
     
     def chunk_docs(self, lang_docs, chunk_size=400):
         """Chunk list of Document objects."""
         text_splitter = TokenTextSplitter(chunk_size=chunk_size, chunk_overlap=0)
         # text_splitter = CharacterTextSplitter(chunk_size=chunk_size, chunk_overlap=0)
         lang_doc_chunks = text_splitter.split_documents(lang_docs)
-        self.logger.info("Chunked {0} Documents to {1}.".format(
+        self.logger.info("Chunked {0} Documents to {1}".format(
             len(lang_docs), len(lang_doc_chunks))
         )
         return lang_doc_chunks
@@ -525,24 +527,41 @@ class IngestionPipeline:
 
     def _get_blob_container_client(self):
         """Instantiate Azure Blob Storage container client."""
-        self.logger.info("Getting Azure Blob Storage container client '{0}'..".format(self.azure_storage_container_name))
+        self.logger.info(
+                "Getting Azure Blob Storage container client '{0}' from account '{1}'".format(
+                    self.azure_storage_container_name,
+                    self.azure_storage_container_account,
+                ))
         blob_service_client = \
-            BlobServiceClient.from_connection_string(self.azure_storage_connection_string)
+            BlobServiceClient.from_connection_string(
+                self.azure_storage_connection_string
+            )
         container_client = \
-            blob_service_client.get_container_client(self.azure_storage_container_name)
+            blob_service_client.get_container_client(
+                self.azure_storage_container_name
+            )
         return container_client
 
     def _get_search_client(self):
         """Instantiate Azure AI Search client."""
-        self.logger.info("Getting Azure AI Search client from service '{0}'..".format(self.azure_search_service_name))
-        azure_search_endpoint = "https://" + self.azure_search_service_name + ".search.windows.net"
-        search_client = SearchIndexClient(azure_search_endpoint, AzureKeyCredential(self.azure_search_key))
+        self.logger.info("Getting Azure AI Search client from service '{0}'..".format(
+            self.azure_search_service_name
+            ))
+        azure_search_endpoint = "https://" + self.azure_search_service_name \
+                                    + ".search.windows.net"
+        search_client = SearchIndexClient(
+            azure_search_endpoint, 
+            AzureKeyCredential(self.azure_search_key),
+        )
         return search_client
 
     def _get_embedding_model(self):
         """Instantiate OpenAI embedding model."""
         openai_api_deployment = "text-embedding-3-small"
-        self.logger.info("Getting OpenAI embedding model '{0}'..".format(openai_api_deployment))
+        self.logger.info(
+            "Getting OpenAI embedding model '{0}'..".format(
+                openai_api_deployment
+            ))
         embeddings = AzureOpenAIEmbeddings(
             deployment=openai_api_deployment,
             azure_endpoint=os.environ['AZURE_ENDPOINT'],
@@ -558,10 +577,11 @@ class IngestionPipeline:
         self.azure_search_index_name = os.getenv('AZURE_AI_SEARCH_INDEX_NAME')
         self.azure_search_service_name = os.getenv('AZURE_AI_SEARCH_SERVICE_NAME')
         self.azure_storage_container_name = os.getenv('AZURE_STORAGE_CONTAINER_NAME')
+        self.azure_storage_container_account = os.getenv('AZURE_STORAGE_CONTAINER_ACCOUNT')
         self.azure_storage_connection_string = os.getenv('AZURE_STORAGE_CONNECTION_STRING')
         self.azure_search_endpoint = \
             "https://" + self.azure_search_service_name + ".search.windows.net"
-        self.logger.info('Set API variables.')
+        self.logger.info('Set API variables')
 
 
 if __name__ == '__main__':
@@ -590,7 +610,6 @@ if __name__ == '__main__':
         default=False,
     )
     args = parser.parse_args()
-    print(args.pdf_file)
     ingestion_pipeline = IngestionPipeline()
     ingestion_pipeline.ingest_pdfs(
         pdf_file=args.pdf_file, 
