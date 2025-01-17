@@ -41,8 +41,6 @@ warnings.filterwarnings("ignore")
 To-do's:
     - Find alternative method to load PDF paths from Azure Blob storage with 
         newer DocumentIntelligenceClient class
-    - Optionally save PDF cropped images as JPEG
-    - Include PyPDF2, pdf2image to setup
 '''
 
 class IngestionPipeline:
@@ -221,58 +219,90 @@ class IngestionPipeline:
     def convert_paged_pdf_contents_to_docs(
             self, 
             paged_pdf_contents,
-            extract_tables=True,
-            extract_charts=True,
+            convert_tables=True,
+            convert_charts=True,
         ):
         """Create LangChain Document objects from extracted PDF contents."""
+        lang_doc_text = []
         lang_doc_tables = []
+        lang_doc_charts = []
         self.logger.info('Converting extracted PDF page contents to LangChain Documents...')
         for pdf_name, pdf_items in paged_pdf_contents.items():
             company_name = pdf_items.get('company_name')
             report_quarter = pdf_items.get('report_quarter')
             pages = pdf_items.get('pages')
             for page_num, page_content in pages.items():
-                for table in page_content.get('tables'):
-                    metadata = preprocess_text(' '.join(page_content.get('text')))
-                    lang_doc_tables.append(
-                        Document(
-                            page_content=str(table),
-                            metadata={
-                                'text': metadata, 
-                                'page_num': page_num,
-                                'company_name': company_name,
-                                'report_quarter': report_quarter,
-                                # 'report_blob_path': report_blob_path,
-                                }
-                            )
+                # Convert text content by default
+                text_content = preprocess_text(' '.join(page_content.get('text')))
+                lang_doc_text.append(
+                    Document(
+                        page_content=text_content,
+                        metadata={
+                            'page_num': page_num,
+                            'pdf_name': pdf_name,
+                            'company_name': company_name,
+                            'report_quarter': report_quarter,
+                            'page_titles': '',
+                            'page_headers': '',
+                            'section_headers': '',
+                            'page_footers': '',
+                            # 'report_blob_path': report_blob_path,
+                            }
                         )
-                    if page_content.get('title') is not None:
-                        lang_doc_tables[-1].metadata['page_titles'] = ', '.join(page_content.get('title'))
-                    else:
-                        lang_doc_tables[-1].metadata['page_titles'] = ''
-                    if page_content.get('pageHeader') is not None:
-                        lang_doc_tables[-1].metadata['page_headers'] = ', '.join(page_content.get('pageHeader'))
-                    else:
-                        lang_doc_tables[-1].metadata['page_headers'] = ''
-                    if page_content.get('sectionHeader') is not None:
-                        lang_doc_tables[-1].metadata['section_headers'] = ', '.join(page_content.get('sectionHeader'))
-                    else:
-                        lang_doc_tables[-1].metadata['section_headers'] = ''
-                    if page_content.get('pageFooter') is not None:
-                        lang_doc_tables[-1].metadata['page_footers'] = ', '.join(page_content.get('pageFooter'))
-                    else:
-                        lang_doc_tables[-1].metadata['page_footers'] = ''
-        self.logger.info("Created {0} Document objects.".format(len(lang_doc_tables)))
-        return lang_doc_tables
+                    )
+                if convert_tables:
+                    for table in page_content.get('tables'):
+                        lang_doc_tables.append(
+                            Document(
+                                page_content=str(table),
+                                metadata={
+                                    'text': text_content, 
+                                    'pdf_name': pdf_name,
+                                    'page_num': page_num,
+                                    'company_name': company_name,
+                                    'report_quarter': report_quarter,
+                                    'page_titles': '',
+                                    'page_headers': '',
+                                    'section_headers': '',
+                                    'page_footers': '',
+                                    # 'report_blob_path': report_blob_path,
+                                    }
+                                )
+                            )
+                if convert_charts:
+                    pass 
+            if page_content.get('title') is not None:
+                lang_doc_text[-1].metadata['page_titles'] = ', '.join(page_content.get('title'))
+                lang_doc_tables[-1].metadata['page_titles'] = ', '.join(page_content.get('title'))
+            if page_content.get('pageHeader') is not None:
+                lang_doc_text[-1].metadata['page_headers'] = ', '.join(page_content.get('pageHeader'))
+                lang_doc_tables[-1].metadata['page_headers'] = ', '.join(page_content.get('pageHeader'))
+            if page_content.get('sectionHeader') is not None:
+                lang_doc_text[-1].metadata['section_headers'] = ', '.join(page_content.get('sectionHeader'))
+                lang_doc_tables[-1].metadata['section_headers'] = ', '.join(page_content.get('sectionHeader'))
+            if page_content.get('pageFooter') is not None:
+                lang_doc_text[-1].metadata['page_footers'] = ', '.join(page_content.get('pageFooter'))
+                lang_doc_tables[-1].metadata['page_footers'] = ', '.join(page_content.get('pageFooter'))
+        self.logger.info("Created {0} text Documents.".format(len(lang_doc_text)))
+        self.logger.info("Created {0} table Documents.".format(len(lang_doc_tables)))
+        self.logger.info("Created {0} chart Documents.".format(len(lang_doc_charts)))
+        return lang_doc_text, lang_doc_tables, lang_doc_charts
     
-    def chunk_docs(self, lang_doc_tables, chunk_size=400):
-        """Chunk LangChain Documents representing extracted tables."""
-        self.logger.info('Chunking {0} Document objects with a token chunk size of {1}...'.format(len(lang_doc_tables), chunk_size))
+    def chunk_docs(self, lang_docs, chunk_size=400):
+        """Chunk list of Document objects."""
+        self.logger.info(
+            'Chunking {0} Documents with a token chunk size of {1}...'.\
+                format(len(lang_docs), 
+                chunk_size
+                )
+            )
         text_splitter = TokenTextSplitter(chunk_size=chunk_size, chunk_overlap=0)
         # text_splitter = CharacterTextSplitter(chunk_size=chunk_size, chunk_overlap=0)
-        lang_doc_tables_chunks = text_splitter.split_documents(lang_doc_tables)
-        self.logger.info("Created {0} chunked Documents.".format(len(lang_doc_tables_chunks)))
-        return lang_doc_tables_chunks
+        lang_doc_chunks = text_splitter.split_documents(lang_docs)
+        self.logger.info("Chunked {0} Documents to {1}.".format(
+            len(lang_docs), len(lang_doc_chunks))
+        )
+        return lang_doc_chunks
     
     def get_search_index(self, add_docs=None, overwrite_index=False):
         """Get a specific search index instance with an option to add more Documents to it."""
@@ -423,7 +453,7 @@ class IngestionPipeline:
         report_contents = self.extract_report_contents(select_files)
         result_dicts = parse_pdfs(report_contents)
         paged_text_and_tables = page_pdf_contents(result_dicts)
-        lang_doc_tables = self.convert_pages_to_table_docs(paged_text_and_tables)
+        lang_doc_tables = self.convert_paged_pdf_contents_to_docs(paged_text_and_tables)
         lang_doc_tables_chunks = self.chunk_docs(lang_doc_tables)
         self.get_search_index(
             add_docs=lang_doc_tables_chunks, 
