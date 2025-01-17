@@ -502,25 +502,30 @@ class IngestionPipeline:
 
     def ingest_pdfs(
             self, 
-            select_files=[], 
+            pdf_file, 
+            upload_docs_in_batches=True,
+            batch_size=50,
             overwrite_index=False,
         ):
-        """Extract, parse, chunk, and index PDFs in a single function call."""
-        report_contents = self.extract_report_contents(select_files)
-        result_dicts = parse_pdfs(report_contents)
-        paged_text_and_tables = page_pdf_contents(result_dicts)
-        lang_doc_tables = self.convert_paged_pdf_contents_to_docs(paged_text_and_tables)
-        lang_doc_tables_chunks = self.chunk_docs(lang_doc_tables)
+        """
+        Parse PDFs, construct and chunk Document objects of PDF contents, 
+        and upload Documents to an index.
+        """
+        result_dicts = parse_pdfs([pdf_file])
+        pdf_pages_dict = page_pdf_contents(result_dicts)
+        text_docs, table_docs, chart_docs = \
+            self.convert_paged_pdf_contents_to_docs(pdf_pages_dict)
+        text_doc_batches = self.chunk_docs(text_docs)
         self.get_search_index(
-            add_docs=lang_doc_tables_chunks, 
-            overwrite_index=overwrite_index
+            upload_docs=text_doc_batches, 
+            upload_docs_in_batches=upload_docs_in_batches,
+            batch_size=batch_size,
+            overwrite_index=overwrite_index,
         )
-        # vector_store = self.get_search_index(add_docs=lang_doc_tables_chunks, overwrite_index=overwrite_index)
-        # return vector_store
 
     def _get_blob_container_client(self):
         """Instantiate Azure Blob Storage container client."""
-        self.logger.info("Getting Azure Blob Storage container client '{0}'...".format(self.azure_storage_container_name))
+        self.logger.info("Getting Azure Blob Storage container client '{0}'..".format(self.azure_storage_container_name))
         blob_service_client = \
             BlobServiceClient.from_connection_string(self.azure_storage_connection_string)
         container_client = \
@@ -529,7 +534,7 @@ class IngestionPipeline:
 
     def _get_search_client(self):
         """Instantiate Azure AI Search client."""
-        self.logger.info("Getting Azure AI Search client from service '{0}'...".format(self.azure_search_service_name))
+        self.logger.info("Getting Azure AI Search client from service '{0}'..".format(self.azure_search_service_name))
         azure_search_endpoint = "https://" + self.azure_search_service_name + ".search.windows.net"
         search_client = SearchIndexClient(azure_search_endpoint, AzureKeyCredential(self.azure_search_key))
         return search_client
@@ -537,7 +542,7 @@ class IngestionPipeline:
     def _get_embedding_model(self):
         """Instantiate OpenAI embedding model."""
         openai_api_deployment = "text-embedding-3-small"
-        self.logger.info("Getting OpenAI embedding model {0}'...".format(openai_api_deployment))
+        self.logger.info("Getting OpenAI embedding model '{0}'..".format(openai_api_deployment))
         embeddings = AzureOpenAIEmbeddings(
             deployment=openai_api_deployment,
             azure_endpoint=os.environ['AZURE_ENDPOINT'],
@@ -560,16 +565,36 @@ class IngestionPipeline:
 
 
 if __name__ == '__main__':
-    # parser = argparse.ArgumentParser()
-    # parser.add_argument(
-    #     "--select_files",
-    #     type=str,
-    #     help="Specific files to select in index.",
-    # )
-    # args = parser.parse_args()
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--pdf_file",
+        type=str,
+        help="PDF file location",
+    )
+    parser.add_argument(
+        "--upload_docs_in_batches",
+        type=bool,
+        help="Whether to upload Documents to index in batches",
+        default=True,
+    )
+    parser.add_argument(
+        "--batch_size",
+        type=int,
+        help="Batch size to use when uploading Documents to index",
+        default=50,
+    )
+    parser.add_argument(
+        "--overwrite_index",
+        type=bool,
+        help="Whether to overwrite index if it exists",
+        default=False,
+    )
+    args = parser.parse_args()
+    print(args.pdf_file)
     ingestion_pipeline = IngestionPipeline()
-    select_files = [
-    ]
     ingestion_pipeline.ingest_pdfs(
-        select_files, overwrite_index=True
+        pdf_file=args.pdf_file, 
+        upload_docs_in_batches=args.upload_docs_in_batches,
+        batch_size=args.batch_size,
+        overwrite_index=args.overwrite_index,
     )
