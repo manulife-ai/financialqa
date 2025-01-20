@@ -53,26 +53,37 @@ OPENAI_API_VERSION=""
 ```
 The ```financialqa``` package can then be imported and used in a script:
 ```python
+# Parse PDFs, create and chunk Document objects, and insert Documents into an Azure AI Search index
 from financialqa.ingestion.ingestionpipeline import IngestionPipeline
 
 ingestion_pipeline = IngestionPipeline()
+ingestion_pipeline.ingest_pdfs(
+    process_charts=True,
+    chart_model="deplot",
+    upload_docs_in_batches=True,
+    batch_size=50,
+    overwrite_index=True,
+) 
 
-# Parse PDFs, create and chunk Document objects, and insert Documents into an Azure AI Search index
-ingestion_pipeline.ingest_pdfs() 
+# Perform inference based on the indexed Documents
+from financialqa.inference.inferencepipeline import InferencePipeline
+
+inference_pipeline = InferencePipeline()
+inference_pipeline.infer(
+    query='What is the 5-yr Average P/E?', 
+    company_name='CIBC',
+    top_k=3
+)
 ```
 
 Or run directly from the command line:
 
 ```bash
-$ python3 -m financialqa.ingestion.ingestionpipeline
+$ python3 -m financialqa.ingestion.ingestionpipeline --help
+$ python3 -m financialqa.inference.inferencepipeline --help
 ```
 
 ## To-do's
-* Implement batch embedding and indexing
-* Add inference module
-* Add Azure Key Vault option for loading API keys
-* Provide options when running from command line
 * Add unittest test cases
-* Add exception handling for API calls
-* Apply PEP 8 style guide (syntax formatting, docstrings, etc.)
+* Add Azure Key Vault option for loading API keys
 * Upload final copy to Python Package Index
