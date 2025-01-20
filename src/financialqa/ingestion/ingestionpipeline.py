@@ -513,22 +513,16 @@ class IngestionPipeline:
                         upload_docs[i:i+batch_size] for i in range(
                             0, len(upload_docs), batch_size)
                         ]
+                    tot_time = time.time()
                     for doc_batch in doc_batches:
-                        tot_time = time.time()
+                        batch_time = time.time()
                         try:
-                            batch_time = time.time()
                             self.logger.info("Attempting to upload batch of {0} Documents to index '{1}'..".\
                                 format(
                                     len(doc_batch), 
                                     self.azure_search_index_name
                                 ))
                             ai_search_index.add_documents(documents=upload_docs)
-                            self.logger.info("Successfully uploaded batch of {0} Documents to index '{1}' in {2} seconds".\
-                                format(
-                                    len(doc_batch), 
-                                    self.azure_search_index_name, 
-                                    round(time.time() - batch_time)
-                                ))
                         except: 
                             self.logger.info("Unable to upload batch of {0} Documents to index '{1}'. Trying again.".\
                                 format(
@@ -536,12 +530,18 @@ class IngestionPipeline:
                                     self.azure_search_index_name, 
                                 ))
                         else:
-                            self.logger.info("Successfully uploaded a total of {0} Documents to index '{1}' in {2} seconds".\
+                            self.logger.info("Successfully uploaded batch of {0} Documents to index '{1}' in {2} seconds".\
                                 format(
                                     len(doc_batch), 
                                     self.azure_search_index_name, 
-                                    round(time.time() - tot_time)
+                                    round(time.time() - batch_time)
                                 ))
+                    self.logger.info("Successfully uploaded a total of {0} Documents to index '{1}' in {2} seconds".\
+                        format(
+                            len(upload_docs), 
+                            self.azure_search_index_name, 
+                            round(time.time() - tot_time)
+                        ))
                 else:
                     self.logger.info("Attempting to upload {0} Documents to index '{1}'..".\
                         format(
@@ -626,22 +626,25 @@ class IngestionPipeline:
 
     def _get_embedding_model(self):
         """Instantiate OpenAI embedding model."""
-        openai_api_deployment = "text-embedding-3-small"
         self.logger.info(
-            "Getting OpenAI embedding model '{0}'..".format(
-                openai_api_deployment
+            "Getting OpenAI embedding model '{0}' from endpoint {1}..".format(
+                self.azure_openai_embedding_model,
+                self.azure_openai_endpoint,
             ))
         embeddings = AzureOpenAIEmbeddings(
-            deployment=openai_api_deployment,
-            azure_endpoint=os.environ['AZURE_ENDPOINT'],
-            openai_api_version=os.environ['AZURE_OPENAI_API_VERSION'],
-            # openai_api_key=os.environ['OPENAI_API_KEY'],
-            # show_progress_bar=True,
-            chunk_size = 1
+            deployment=self.azure_openai_embedding_model,
+            azure_endpoint=self.azure_openai_endpoint,
+            openai_api_version=self.azure_openai_version,
+            openai_api_key=self.azure_openai_key,
         )
         return embeddings
     
     def _load_api_vars(self):
+        self.azure_openai_key = os.getenv('AZURE_OPENAI_KEY')
+        self.azure_openai_type = os.getenv('AZURE_OPENAI_TYPE')
+        self.azure_openai_version = os.getenv('AZURE_OPENAI_VERSION')
+        self.azure_openai_endpoint = os.getenv('AZURE_OPENAI_ENDPOINT')
+        self.azure_openai_embedding_model = os.getenv('AZURE_OPENAI_EMBEDDING_MODEL')
         self.azure_search_key = os.getenv('AZURE_AI_SEARCH_KEY')
         self.azure_search_index_name = os.getenv('AZURE_AI_SEARCH_INDEX_NAME')
         self.azure_search_service_name = os.getenv('AZURE_AI_SEARCH_SERVICE_NAME')
