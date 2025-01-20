@@ -11,6 +11,7 @@ from azure.ai.documentintelligence.models import AnalyzeResult, DocumentAnalysis
 
 """
 To-do's:
+    - Fix improper nested column headers
 """
 
 logging.basicConfig(    
@@ -67,7 +68,7 @@ def page_pdf_contents(results_dict):
             if page_num in text_table_chart_dict['pages'].keys():
                 text_table_chart_dict['pages'][page_num].get('text').append(paragraph.get('content'))
             else:
-                text_table_chart_dict['pages'][page_num] = {'text': [], 'tables': [paragraph.get('content')]}
+                text_table_chart_dict['pages'][page_num] = {'text': [paragraph.get('content')], 'tables': []}
             if 'role' in paragraph.keys():
                 if paragraph['role'] in text_table_chart_dict['pages'][page_num].keys():
                     text_table_chart_dict['pages'][page_num][paragraph['role']].append(paragraph.get('content'))
