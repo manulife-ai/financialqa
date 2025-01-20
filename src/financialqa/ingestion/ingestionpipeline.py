@@ -266,6 +266,18 @@ class IngestionPipeline:
             report_quarter = pdf_items.get('report_quarter')
             pages = pdf_items.get('pages')
             for page_num, page_content in pages.items():
+                page_titles = ''
+                page_headers = ''
+                page_footers = ''
+                section_headers = ''
+                if 'title' in page_content.keys():
+                    page_titles = ', '.join(page_content.get('title'))
+                if 'sectionHeading' in page_content.keys():
+                    section_headers = ', '.join(page_content.get('sectionHeading'))
+                if 'pageHeader' in page_content.keys():
+                    page_headers = ', '.join(page_content.get('pageHeader'))
+                if 'pageFooter' in page_content.keys():
+                    page_footers = ', '.join(page_content.get('pageFooter'))
                 # Convert text content by default
                 text_content = preprocess_text(' '.join(page_content.get('text')))
                 text_docs.append(
@@ -276,15 +288,16 @@ class IngestionPipeline:
                             'pdf_name': pdf_name,
                             'company_name': company_name,
                             'report_quarter': report_quarter,
-                            'page_titles': '',
-                            'page_headers': '',
-                            'section_headers': '',
-                            'page_footers': '',
-                            # 'report_blob_path': report_blob_path,
+                            'page_titles': page_titles,
+                            'page_headers': page_headers,
+                            'section_headers': section_headers,
+                            'page_footers': page_footers,
                             }
                         )
                     )
                 if convert_tables:
+                    if not 'tables' in page_content.keys():
+                        continue
                     for table in page_content.get('tables'):
                         table_docs.append(
                             Document(
@@ -295,34 +308,43 @@ class IngestionPipeline:
                                     'page_num': page_num,
                                     'company_name': company_name,
                                     'report_quarter': report_quarter,
-                                    'page_titles': '',
-                                    'page_headers': '',
-                                    'section_headers': '',
-                                    'page_footers': '',
-                                    # 'report_blob_path': report_blob_path,
+                                    'page_titles': page_titles,
+                                    'page_headers': page_headers,
+                                    'section_headers': section_headers,
+                                    'page_footers': page_footers,
                                     }
                                 )
                             )
                 if convert_charts:
-                    pass 
-            if page_content.get('title') is not None:
-                text_docs[-1].metadata['page_titles'] = ', '.join(page_content.get('title'))
-                table_docs[-1].metadata['page_titles'] = ', '.join(page_content.get('title'))
-            if page_content.get('pageHeader') is not None:
-                text_docs[-1].metadata['page_headers'] = ', '.join(page_content.get('pageHeader'))
-                table_docs[-1].metadata['page_headers'] = ', '.join(page_content.get('pageHeader'))
-            if page_content.get('sectionHeader') is not None:
-                text_docs[-1].metadata['section_headers'] = ', '.join(page_content.get('sectionHeader'))
-                table_docs[-1].metadata['section_headers'] = ', '.join(page_content.get('sectionHeader'))
-            if page_content.get('pageFooter') is not None:
-                text_docs[-1].metadata['page_footers'] = ', '.join(page_content.get('pageFooter'))
-                table_docs[-1].metadata['page_footers'] = ', '.join(page_content.get('pageFooter'))
-        self.logger.info(
-            "Created {0} text Documents, {1} table Documents, and {2} chart Documents".format(
-                len(text_docs), 
-                len(table_docs), 
-                len(chart_docs)
-            ))
+                    if not 'figures' in page_content.keys():
+                        continue
+                    for figure_name, figure_contents in page_content.get('figures').items():
+                        if 'chart_table' in figure_contents.keys():
+                            chart_table = figure_contents.get('chart_table')
+                        else:
+                            self.logger.info(f'Missing chart table input for {figure_name}')
+                            break
+                        chart_docs.append(
+                            Document(
+                                page_content=chart_table.strip(),
+                                metadata={
+                                    'page_num': page_num,
+                                    'pdf_name': pdf_name,
+                                    'company_name': company_name,
+                                    'report_quarter': report_quarter,
+                                    'page_titles': page_titles,
+                                    'page_headers': page_headers,
+                                    'section_headers': section_headers,
+                                    'page_footers': page_footers,
+                                    }
+                                )
+                            )
+            self.logger.info(
+                "Created {0} text Documents, {1} table Documents, and {2} chart Documents".format(
+                    len(text_docs), 
+                    len(table_docs), 
+                    len(chart_docs)
+                ))
         return text_docs, table_docs, chart_docs
     
     def chunk_docs(self, lang_docs, chunk_size=400):
