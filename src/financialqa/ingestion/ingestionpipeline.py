@@ -6,12 +6,16 @@ import copy
 import logging
 import argparse
 
+from PIL import Image
 from PyPDF2 import PdfReader, PdfWriter
 from pdf2image import convert_from_path
 from langchain.docstore.document import Document
 from langchain_openai import AzureOpenAIEmbeddings, OpenAIEmbeddings
 from langchain_community.vectorstores.azuresearch import AzureSearch
 from langchain.text_splitter import TokenTextSplitter, CharacterTextSplitter
+
+from transformers import Pix2StructProcessor, Pix2StructForConditionalGeneration
+from src.financialqa.ingestion.models.model_base_decoder import infer_base_decoder
 
 from azure.core.credentials import AzureKeyCredential
 from azure.storage.blob import BlobServiceClient, BlobClient, ContainerClient
@@ -40,8 +44,8 @@ warnings.filterwarnings("ignore")
 
 '''
 To-do's:
-    - Find alternative method to load PDF paths from Azure Blob storage with 
-        newer DocumentIntelligenceClient class
+    - Load PDFs from blob storage directly before passing to Doc. Intel.
+    - Improve assigning to dict in generate_table_from_chart()
 '''
 
 class IngestionPipeline:
@@ -101,46 +105,10 @@ class IngestionPipeline:
             }
         return report_contents
     
-    def add_chartvlm_docs(
-            self, 
-            chartvlm_output_filepath, 
-            company_list
-        ):
-        with open(chartvlm_output_filepath, "r") as file:
-            chartvlm_results = json.load(file)
-        chartvlm_docs = []
-        for chart_filename, chartvlm_result in chartvlm_results.items():
-            company_name = chart_filename.split('/')[-1].split('_')[0]
-            if company_name in company_list:
-                company_name = company_name.upper()
-                if company_name.lower() == 'manulife':
-                    company_name = 'MFC'
-                chart_title = chartvlm_result.get('title')
-                chartvlm_table_json = chartvlm_result.get('json')
-                chartvlm_docs.append(
-                    Document(
-                        page_content=str(chartvlm_result),
-                        metadata={
-                            'text': chart_title.strip(), 
-                            'page_num': 'N/A',
-                            'company_name': company_name,
-                            'report_quarter': 'N/A',
-                            'report_blob_path': 'N/A',
-                            'page_titles': 'N/A',
-                            'page_headers': 'N/A',
-                            'section_headers': 'N/A',
-                            'page_footers': 'N/A',
-                            }
-                        )
-                    )
-        return chartvlm_docs
-    
     def crop_images_from_pdfs(
             self, 
             pdf_pages_dict, 
             save_as_jpg=False,
-            overwrite_pdf_images=False,
-            overwrite_jpg_images=False,
         ):
         """
         Crop and save images from PDFs using PyPDF2 with bounding box coordinates
@@ -192,13 +160,15 @@ class IngestionPipeline:
                     if not os.path.isdir(output_dir):
                         print(f"Creating a directory '{output_dir}' to save outputs...")
                         os.makedirs(output_dir)
-                    output_path = os.path.join(output_dir, figure_name + '.pdf')
-                    if overwrite_pdf_images:
-                        with open(output_path, 'wb') as out_f:
-                            writer.write(out_f)
+                    pdf_file_path = os.path.join(output_dir, figure_name + '.pdf')
+                    pdf_pages.get(page_num).get('figures').get(figure_name).\
+                        update({'pdf_file_path': pdf_file_path})
+                    with open(pdf_file_path, 'wb') as out_f:
+                        writer.write(out_f)
                     if save_as_jpg:
                         jpg_output_folder = os.path.join(
-                            '../data/outputs', 
+                            '../data',
+                            'outputs', 
                             pdf_name, 
                             'jpg_outputs'
                         )
@@ -206,15 +176,79 @@ class IngestionPipeline:
                             print(f"Creating a directory '{jpg_output_folder}' to save JPEG outputs...")
                             os.makedirs(jpg_output_folder)
                         images = convert_from_path(
-                            output_path,
+                            pdf_file_path,
                             fmt='JPEG',
                             output_folder=jpg_output_folder,
                         )
-                        if overwrite_jpg_images:
-                            for img in images:
-                                jpg_file_path = os.path.join(jpg_output_folder, figure_name + '.jpg')
-                                print(f"Saving PDF '{pdf_name}' as JPEG to folder '{jpg_output_folder}'.")
-                                img.save(fp=jpg_file_path)
+                        jpg_file_path = os.path.join(
+                            jpg_output_folder, 
+                            figure_name + '.jpg',
+                        )
+                        pdf_pages.get(page_num).get('figures').get(figure_name).\
+                            update({'jpg_file_path': jpg_file_path})
+                        for img in images:
+                            print(f"Saving PDF '{pdf_name}' as JPEG to folder '{jpg_output_folder}'.")
+                            img.save(fp=jpg_file_path)
+
+    def generate_chartvlm_output(
+            self,
+            model_path,
+            image_path,
+        ):
+        self.logger.info(f'Generating ChartVLM output for figure with JPG path: {image_path}...')
+        img = Image.open(image_path).convert("RGB")
+        chartvlm_decoder_output = infer_base_decoder(
+            img, 
+            model_path, 
+            title_type=False,
+        )
+        return chartvlm_decoder_output
+    
+    def generate_deplot_output(
+            self, 
+            image_path,
+        ):
+        pix2struct_processor = Pix2StructProcessor.from_pretrained('google/deplot')
+        pix2struct_model = Pix2StructForConditionalGeneration.from_pretrained('google/deplot')
+        self.logger.info(f'Generating DePlot output for figure with JPG path: {image_path}...')
+        image = Image.open(fp=image_path)
+        inputs = pix2struct_processor(
+            images=image, 
+            text="Generate underlying data table of the figure below:", 
+            return_tensors="pt"
+        )
+        predictions = pix2struct_model.generate(**inputs, max_new_tokens=512)
+        deplot_output = pix2struct_processor.decode(
+            predictions[0], 
+            skip_special_tokens=True
+        )
+        self.logger.info(f'DePlot output for figure with image path: {image_path}:\n{deplot_output}')
+        return deplot_output
+
+    def generate_table_from_chart(
+            self,
+            pdf_pages_dict,
+            chart_model='deplot',
+            chart_model_path='',
+        ):
+        for pdf_name, pdf_items in pdf_pages_dict.items():
+            company_name = pdf_items.get('company_name')
+            pages = pdf_items.get('pages')
+            for page_num, page_content in pages.items():
+                if not 'figures' in page_content.keys():
+                    continue
+                for figure_name, figure_contents in page_content.get('figures').items():
+                    image_path = figure_contents.get('jpg_file_path')
+                    if chart_model == 'chartvlm':
+                        chart_to_table_output = self.generate_chartvlm_output(
+                            chart_model_path,
+                            image_path,
+                        )
+                    elif chart_model == 'deplot':
+                        chart_to_table_output = self.generate_deplot_output(
+                            image_path,
+                        )
+                    figure_contents.update({'chart_table': chart_to_table_output})
 
     def convert_paged_pdf_contents_to_docs(
             self, 
@@ -505,6 +539,9 @@ class IngestionPipeline:
     def ingest_pdfs(
             self, 
             pdf_file, 
+            process_charts=False,
+            chart_model='deplot',
+            chart_model_path='',
             upload_docs_in_batches=True,
             batch_size=50,
             overwrite_index=False,
@@ -516,10 +553,20 @@ class IngestionPipeline:
         result_dicts = parse_pdfs([pdf_file])
         pdf_pages_dict = page_pdf_contents(result_dicts)
         text_docs, table_docs, chart_docs = \
-            self.convert_paged_pdf_contents_to_docs(pdf_pages_dict)
+            self.convert_paged_pdf_contents_to_docs(
+                pdf_pages_dict,
+                convert_charts=process_charts,
+            )
+        if process_charts:
+            self.generate_table_from_chart(
+                pdf_pages_dict,
+                chart_model=chart_model,
+                chart_model_path=chart_model_path
+        )
         text_doc_batches = self.chunk_docs(text_docs)
+        combined_docs = text_docs + table_docs + chart_docs
         self.get_search_index(
-            upload_docs=text_doc_batches, 
+            upload_docs=combined_docs, 
             upload_docs_in_batches=upload_docs_in_batches,
             batch_size=batch_size,
             overwrite_index=overwrite_index,
@@ -592,6 +639,24 @@ if __name__ == '__main__':
         help="PDF file location",
     )
     parser.add_argument(
+        "--process_charts",
+        type=str,
+        help="Whether to process and index extracted chart figures",
+        default=False,
+    )
+    parser.add_argument(
+        "--chart_model",
+        type=str,
+        help="Chart model used to convert the chart to tabular form",
+        default='deplot',
+    )
+    parser.add_argument(
+        "--chart_model_path",
+        type=str,
+        help="Chart model path",
+        default='',
+    )
+    parser.add_argument(
         "--upload_docs_in_batches",
         type=bool,
         help="Whether to upload Documents to index in batches",
@@ -613,6 +678,9 @@ if __name__ == '__main__':
     ingestion_pipeline = IngestionPipeline()
     ingestion_pipeline.ingest_pdfs(
         pdf_file=args.pdf_file, 
+        process_charts=args.process_charts,
+        chart_model=args.chart_model,
+        chart_model_path=args.chart_model_path,
         upload_docs_in_batches=args.upload_docs_in_batches,
         batch_size=args.batch_size,
         overwrite_index=args.overwrite_index,
