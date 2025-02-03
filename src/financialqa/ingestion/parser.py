@@ -27,7 +27,7 @@ azure_docintel_endpoint = os.getenv('AZURE_DOCINTEL_ENDPOINT')
 azure_docintel_version = os.getenv('AZURE_DOCINTEL_VERSION')
 
 
-def extract_pdf_contents(pdf_paths):
+def extract_pdf_contents(pdfs_folder):
     """
     Extract PDF contents using Azure Document Intelligence.
 
@@ -43,7 +43,15 @@ def extract_pdf_contents(pdf_paths):
         version=azure_docintel_version,
     )
     pdf_contents_dict = {}
+    pdf_paths = [os.path.join(pdfs_folder, pdf) for pdf in os.listdir(pdfs_folder)]
     for pdf_path in pdf_paths:
+        if not pdf_path.endswith('.pdf'):
+            continue
+        pdf_name = pdf_path.split('/')[-1].replace('.pdf', '')
+        pdf_name_parts = pdf_name.split('_')
+        company_name = pdf_name_parts[0]
+        report_quarter = pdf_name_parts[-1]
+        logger.info(f"Extracting contents from '{pdf_name}'...")
         with open(pdf_path, "rb") as f:
             poller = document_intelligence_client.begin_analyze_document(
                 "prebuilt-layout",
@@ -52,10 +60,6 @@ def extract_pdf_contents(pdf_paths):
                 content_type="application/octet-stream",
             )
             pdf_analysis_results: AnalyzeResult = poller.result()
-        pdf_name = pdf_path.split('/')[-1].replace('.pdf', '')
-        pdf_name_parts = pdf_name.split('_')
-        company_name = pdf_name_parts[0]
-        report_quarter = pdf_name_parts[-1]
         pdf_contents_dict[pdf_name] = {
             'company_name': company_name,
             'report_quarter': report_quarter,

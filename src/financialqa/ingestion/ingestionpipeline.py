@@ -44,7 +44,6 @@ warnings.filterwarnings("ignore")
 
 '''
 To-do's:
-    - Fix loading files from blob storage
 '''
 
 class IngestionPipeline:
@@ -87,44 +86,42 @@ class IngestionPipeline:
         self.logger = logging.getLogger(__name__)  
         self.logger.info("Configured logging")
 
-    def extract_report_contents(self, load_from_local=False):
+    def extract_pdfs_from_blob(
+            self,
+            overwrite_files=False,
+        ):
         """
-        Extract blob reports from Azure Blob Storage container.
+        Extract and save PDF files from a Blob storage container to local disk.
 
         Args:
-            load_from_local (bool): Whether to load files from local storage.
+            overwrite_files (bool): Whether to overwrite existing files.
 
         Returns:
-            dict: Dictionary containing report contents with keys as report 
-                names and values as dictionaries with company name, report 
-                quarter, and report blob path.
+            None
         """
-        report_contents = {}
+        local_folder = '../data'
         self.logger.info(
-            "Extracting {0} PDF contents from Azure Blob Storage container '{1}'...".\
-                format(
-                    len(select_files),
-                    self.azure_storage_container_name,
-                ))
+            "Reading files from Azure Blob storage container '{0}'".format(
+                self.azure_storage_container_name,
+        ))
         for blob in self.blob_storage_container.list_blobs():
-            if select_files and blob.name not in select_files:
-                continue
-            report_name = blob.name
-            self.logger.info("Extracting contents from file '{0}'.".format(report_name))
-            report_blob_path = 'https://' \
-                                + os.environ['AZURE_STORAGE_CONTAINER_ACCOUNT'] \
-                                + '.blob.core.windows.net/' \
-                                + os.environ['AZURE_STORAGE_CONTAINER_NAME'] \
-                                + '/' + report_name
-            name_contents = report_name.split('_')
-            company_name = name_contents[0]
-            report_quarter = name_contents[-1].replace('.pdf', '')
-            report_contents[report_name] = {
-                'company_name': company_name, 
-                'report_quarter': report_quarter,
-                'report_blob_path': report_blob_path,
-            }
-        return report_contents
+            if blob.name.endswith('.pdf'):
+                blob_name = blob.name
+                blob_client = self.blob_storage_container.get_blob_client(blob_name)
+                download_file_path = os.path.join(local_folder, blob_name)
+                os.makedirs(
+                    os.path.dirname(download_file_path), 
+                    exist_ok=True,
+                )
+                if os.path.isfile(download_file_path) and not overwrite_files:
+                    self.logger.info("File '{0}' already exists".format(blob_name))
+                    continue
+                with open(download_file_path, "wb") as download_file:
+                    download_file.write(blob_client.download_blob().readall())
+                self.logger.info("Downloaded file '{0}' to {1}".format(
+                    blob_name,
+                    download_file_path,
+                ))
     
     def crop_images_from_pdfs(
             self, 
@@ -663,7 +660,7 @@ class IngestionPipeline:
 
     def ingest_pdfs(
             self, 
-            pdf_file, 
+            local_folder=None,
             process_charts=False,
             chart_model='deplot',
             chart_model_path='',
@@ -687,7 +684,12 @@ class IngestionPipeline:
         Returns:
             None
         """
-        result_dicts = extract_pdf_contents([pdf_file])
+        if not local_folder:
+            self.extract_pdfs_from_blob()
+            local_folder = '../data'
+        if local_folder is None:
+            raise ValueError("Please provide a local folder containing PDFs")
+        result_dicts = extract_pdf_contents(local_folder)
         pdf_pages_dict = page_pdf_contents(result_dicts)
         text_docs, table_docs, chart_docs = \
             self.convert_paged_pdf_contents_to_docs(
@@ -794,9 +796,10 @@ class IngestionPipeline:
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        "--pdf_file",
+        "--local_folder",
         type=str,
-        help="PDF file location",
+        help="Local folder containing PDFs",
+        default=None,
     )
     parser.add_argument(
         "--process_charts",
