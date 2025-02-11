@@ -55,6 +55,7 @@ class IngestionPipeline:
             storage container.
         search_client (SearchIndexClient): The client for the Azure AI Search service.
         embedding_model (AzureOpenAIEmbeddings): The model used for generating vector embeddings.
+        local_pdfs_folder (str): Local folder containing (or to store) PDFs.
     """
     
     def __init__(self):
@@ -63,6 +64,7 @@ class IngestionPipeline:
         self.blob_storage_container = self._get_blob_container_client()
         self.search_client = self._get_search_client()
         self.embedding_model = self._get_embedding_model()
+        self.local_pdfs_folder = 'data/'
 
     def configure_logging(self):
         """
@@ -94,39 +96,41 @@ class IngestionPipeline:
         Extract and save PDF files from a Blob storage container to local disk.
 
         Args:
-            overwrite_files (bool): Whether to overwrite existing files.
+            overwrite_files (bool): Whether to overwrite existing files (default: False).
 
         Returns:
             None
         """
-        local_folder = '../data'
         self.logger.info(
-            "Reading files from Azure Blob storage container '{0}'".format(
+            "Reading files from Azure Blob storage container '{0}'...".format(
                 self.azure_storage_container_name,
         ))
         for blob in self.blob_storage_container.list_blobs():
             if blob.name.endswith('.pdf'):
                 blob_name = blob.name
                 blob_client = self.blob_storage_container.get_blob_client(blob_name)
-                download_file_path = os.path.join(local_folder, blob_name)
+                pdf_file_path = os.path.join(self.local_pdfs_folder, blob_name)
                 os.makedirs(
-                    os.path.dirname(download_file_path), 
+                    os.path.dirname(pdf_file_path), 
                     exist_ok=True,
                 )
-                if os.path.isfile(download_file_path) and not overwrite_files:
-                    self.logger.info("File '{0}' already exists".format(blob_name))
+                if os.path.isfile(pdf_file_path) and not overwrite_files:
+                    self.logger.info("File '{0}' already exists in {1}".format(
+                        blob_name,
+                        self.local_pdfs_folder,
+                    ))
                     continue
-                with open(download_file_path, "wb") as download_file:
-                    download_file.write(blob_client.download_blob().readall())
+                with open(pdf_file_path, "wb") as pdf_file:
+                    pdf_file.write(blob_client.download_blob().readall())
                 self.logger.info("Downloaded file '{0}' to {1}".format(
                     blob_name,
-                    download_file_path,
+                    pdf_file_path,
                 ))
     
     def crop_images_from_pdfs(
             self, 
             pdf_pages_dict, 
-            save_as_jpg=False,
+            save_as_jpg=True,
         ):
         """
         Crop and save images from PDFs using PyPDF2 based on bounding box 
@@ -134,7 +138,7 @@ class IngestionPipeline:
 
         Args:
             pdf_pages_dict (dict): A dictionary containing extracted PDF contents.
-            save_as_jpg (bool): Whether to save cropped images as JPEG.
+            save_as_jpg (bool): Whether to save cropped images as JPEG (default: True).
         
         Returns:
             None
@@ -142,7 +146,7 @@ class IngestionPipeline:
         for pdf_name, pdf_contents in pdf_pages_dict.items():
             pdf_pages = pdf_contents.get('pages')
             for page_num, page_dict in pdf_pages.items():
-                if not 'figures' in page_dict:
+                if 'figures' not in page_dict:
                     continue
                 self.logger.info(
                     f"Processing figures on page {page_num} of '{pdf_name}'..."
@@ -183,19 +187,25 @@ class IngestionPipeline:
                     writer.add_page(page)
                     page.mediabox.upper_left = page_mediabox_upper_left
                     page.mediabox.lower_right = page_mediabox_lower_right
-                    output_dir = os.path.join('../data/outputs', pdf_name)
-                    if not os.path.isdir(output_dir):
-                        os.makedirs(output_dir)
+                    pdf_output_dir = os.path.join(
+                        self.local_pdfs_folder, 
+                        'outputs', 
+                        pdf_name
+                    )
+                    if not os.path.isdir(pdf_output_dir):
+                        os.makedirs(pdf_output_dir)
                     pdf_file_path = os.path.join(
-                        output_dir, figure_name + '.pdf',
+                        pdf_output_dir, figure_name + '.pdf',
                     )
                     pdf_pages.get(page_num).get('figures').get(figure_name).\
                         update({'pdf_file_path': pdf_file_path})
                     with open(pdf_file_path, 'wb') as out_f:
                         writer.write(out_f)
                         self.logger.info(
-                            f"Saving figure '{figure_name}' as PDF to folder {pdf_file_path}"
-                        )
+                            "Saving figure '{0}' as PDF to {1}".format(
+                                figure_name,
+                                pdf_output_dir,
+                            ))
                     if save_as_jpg:
                         jpg_output_folder = os.path.join(
                             '../data', 'outputs', pdf_name, 'jpg_outputs',
@@ -215,8 +225,10 @@ class IngestionPipeline:
                             update({'jpg_file_path': jpg_file_path})
                         for img in images:
                             self.logger.info(
-                                f"Saving figure '{figure_name}' as JPEG to folder {jpg_output_folder}"
-                            )
+                                "Saving figure '{0}' as JPEG to {1}".format(
+                                    figure_name,
+                                    jpg_output_folder,
+                                ))
                             img.save(fp=jpg_file_path)
 
     def generate_chartvlm_output(
@@ -293,17 +305,16 @@ class IngestionPipeline:
         
         Args:
             pdf_pages_dict (dict): A dictionary containing extracted PDF contents.
-            chart_model (str): Model to use for converting chart to table.
-            chart_model_path (str): Path to chart model.
+            chart_model (str): Model to use for converting chart to table (default: 'deplot').
+            chart_model_path (str): Path to chart model (default: None).
             
         Returns:
             None
         """
         for pdf_name, pdf_items in pdf_pages_dict.items():
-            company_name = pdf_items.get('company_name')
             pages = pdf_items.get('pages')
             for page_num, page_content in pages.items():
-                if not 'figures' in page_content.keys():
+                if 'figures' not in page_content.keys():
                     continue
                 for figure_name, figure_contents in page_content.get('figures').items():
                     image_path = figure_contents.get('jpg_file_path')
@@ -329,8 +340,8 @@ class IngestionPipeline:
 
         Args:
             pdf_pages_dict (dict): A dictionary containing extracted PDF contents.
-            convert_tables (bool): Whether to convert extracted tables to Document objects.
-            convert_charts (bool): Whether to convert extracted charts to Document objects.
+            convert_tables (bool): Whether to convert extracted tables to Document objects (default: True).
+            convert_charts (bool): Whether to convert extracted charts to Document objects (default: True).
         
         Returns:
             tuple: A tuple containing three lists - text_docs, table_docs, and chart_docs.
@@ -340,7 +351,7 @@ class IngestionPipeline:
         chart_docs = []
         for pdf_name, pdf_items in pdf_pages_dict.items():
             self.logger.info(
-                f"Converting extracted '{pdf_name}' contents to Documents..."
+                f"Converting extracted '{pdf_name}' contents to Document objects..."
             )
             company_name = pdf_items.get('company_name')
             report_quarter = pdf_items.get('report_quarter')
@@ -372,11 +383,9 @@ class IngestionPipeline:
                             'page_headers': page_headers,
                             'section_headers': section_headers,
                             'page_footers': page_footers,
-                            }
-                        )
-                    )
+                        }))
                 if convert_tables:
-                    if not 'tables' in page_content.keys():
+                    if 'tables' not in page_content.keys():
                         continue
                     for table in page_content.get('tables'):
                         table_docs.append(
@@ -392,11 +401,9 @@ class IngestionPipeline:
                                     'page_headers': page_headers,
                                     'section_headers': section_headers,
                                     'page_footers': page_footers,
-                                    }
-                                )
-                            )
+                                }))
                 if convert_charts:
-                    if not 'figures' in page_content.keys():
+                    if 'figures' not in page_content.keys():
                         continue
                     for figure_name, figure_contents in page_content.get('figures').items():
                         if 'chart_table' in figure_contents.keys():
@@ -417,11 +424,9 @@ class IngestionPipeline:
                                     'page_headers': page_headers,
                                     'section_headers': section_headers,
                                     'page_footers': page_footers,
-                                    }
-                                )
-                            )
+                                }))
             self.logger.info(
-                "Created {0} text, {1} table, and {2} chart Documents for PDF {3}".format(
+                "Created {0} text, {1} table, and {2} chart Documents for file '{3}'".format(
                     len(text_docs), 
                     len(table_docs), 
                     len(chart_docs),
@@ -435,7 +440,7 @@ class IngestionPipeline:
 
         Args:
             docs (list): List of Document objects.
-            chunk_size (int): Size of chunks to split Documents into.
+            chunk_size (int): Size of chunks to split Documents into (default: 400).
         
         Returns:
             list: List of chunked Document objects.
@@ -444,7 +449,7 @@ class IngestionPipeline:
         # text_splitter = CharacterTextSplitter(chunk_size=chunk_size, chunk_overlap=0)
         doc_chunks = text_splitter.split_documents(docs)
         self.logger.info(
-            "Chunked {0} Documents to {1} using a chunk size of {2} ".format(
+            "Chunked {0} Documents to {1} Documents using a chunk size of {2} ".format(
                 len(docs), len(doc_chunks), chunk_size))
         return doc_chunks
     
@@ -459,15 +464,15 @@ class IngestionPipeline:
         Get an Azure AI Search index with an option to upload Documents to it.
 
         Args:
-            upload_docs (list): List of Document objects to upload to index.
-            upload_docs_in_batches (bool): Whether to upload Documents in batches.
-            batch_size (int): Number of Documents to upload per batch.
-            overwrite_index (bool): Whether to overwrite index if it exists.
+            upload_docs (list): List of Document objects to upload to index (default: None).
+            upload_docs_in_batches (bool): Whether to upload Documents in batches (default: False).
+            batch_size (int): Number of Documents to upload per batch (default: 50).
+            overwrite_index (bool): Whether to overwrite index if it exists (default: False).
         
         Returns:
             ai_search_index (AzureSearch): Azure AI Search index object.
         """
-        self.logger.info("Getting index '{0}' from AI Search service '{1}'..".\
+        self.logger.info("Getting index '{0}' from AI Search service '{1}'...".\
                         format(
                             self.azure_search_index_name,
                             self.azure_search_service_name,
@@ -590,14 +595,14 @@ class IngestionPipeline:
             )
             if overwrite_index:
                 if index_exists:
-                    self.logger.info("Overwriting index '{0}'".\
+                    self.logger.info("Overwriting index '{0}' in search service '{1}'...".\
                         format(
                             self.azure_search_index_name, 
                             self.azure_search_service_name
                         ))
                     self.search_client.delete_index(self.azure_search_index_name)
                 else:
-                    self.logger.info("Did not find index to overwrite.")
+                    self.logger.info("Did not find index to overwrite")
             ai_search_index = AzureSearch(
                 azure_search_endpoint=self.azure_search_endpoint,
                 azure_search_key=self.azure_search_key,
@@ -617,14 +622,14 @@ class IngestionPipeline:
                     for doc_batch in doc_batches:
                         batch_time = time.time()
                         try:
-                            self.logger.info("Attempting to upload batch of {0} Documents to index '{1}'..".\
+                            self.logger.info("Attempting to upload batch of {0} Documents to index '{1}'...".\
                                 format(
                                     len(doc_batch), 
                                     self.azure_search_index_name
                                 ))
                             ai_search_index.add_documents(documents=upload_docs)
                         except: 
-                            self.logger.info("Unable to upload batch of {0} Documents to index '{1}'. Trying again.".\
+                            self.logger.info("Unable to upload batch of {0} Documents to index '{1}'. Trying again".\
                                 format(
                                     len(doc_batch), 
                                     self.azure_search_index_name, 
@@ -643,7 +648,7 @@ class IngestionPipeline:
                             round(time.time() - tot_time)
                         ))
                 else:
-                    self.logger.info("Attempting to upload {0} Documents to index '{1}'..".\
+                    self.logger.info("Attempting to upload {0} Documents to index '{1}'...".\
                         format(
                             len(upload_docs), 
                             self.azure_search_index_name
@@ -660,10 +665,10 @@ class IngestionPipeline:
 
     def ingest_pdfs(
             self, 
-            local_folder=None,
-            process_charts=False,
-            chart_model='deplot',
-            chart_model_path='',
+            extract_pdfs_from_blob=True,
+            convert_chart_to_table=False,
+            chart_to_table_model='deplot',
+            chart_to_table_model_path='',
             upload_docs_in_batches=True,
             batch_size=50,
             overwrite_index=False,
@@ -673,39 +678,42 @@ class IngestionPipeline:
         of Document objects of PDF contents, and upload Documents to an index.
 
         Args:
-            pdf_file (str): Path to PDF file.
-            process_charts (bool): Whether to process and index extracted chart figures.
-            chart_model (str): Model used to convert the chart to tabular form.
-            chart_model_path (str): Chart model path.
-            upload_docs_in_batches (bool): Whether to upload Documents to index in batches.
-            batch_size (int): Number of Documents to upload per batch.
-            overwrite_index (bool): Whether to overwrite index if it exists.
+            extract_pdfs_from_blob (str): Whether to extract PDFs from Blob storage (default: True).
+            convert_chart_to_table (bool): Whether to convert chart to tabular form (default: False).
+            chart_to_table_model (str): Model used to convert chart to tabular form (default: 'deplot').
+            chart_to_table_model_path (str): Chart to table model path (default: None).
+            upload_docs_in_batches (bool): Whether to upload Documents to index in batches (default: True).
+            batch_size (int): Number of Documents to upload per batch (default: 50).
+            overwrite_index (bool): Whether to overwrite index if it exists (default: False).
             
         Returns:
             None
         """
-        if not local_folder:
+        if extract_pdfs_from_blob:
             self.extract_pdfs_from_blob()
-            local_folder = '../data'
-        if local_folder is None:
-            raise ValueError("Please provide a local folder containing PDFs")
-        result_dicts = extract_pdf_contents(local_folder)
-        pdf_pages_dict = page_pdf_contents(result_dicts)
+        pdf_contents = extract_pdf_contents(self.local_pdfs_folder)
+        pdf_pages_dict = page_pdf_contents(pdf_contents)
+        if convert_chart_to_table:
+            self.crop_images_from_pdfs(
+                pdf_pages_dict, 
+                save_as_jpg=True,
+            )
+            self.generate_table_from_chart(
+                pdf_pages_dict,
+                chart_model=chart_to_table_model,
+                chart_model_path=chart_to_table_model_path,
+            )
         text_docs, table_docs, chart_docs = \
             self.convert_paged_pdf_contents_to_docs(
                 pdf_pages_dict,
-                convert_charts=process_charts,
+                convert_charts=convert_chart_to_table,
             )
-        if process_charts:
-            self.generate_table_from_chart(
-                pdf_pages_dict,
-                chart_model=chart_model,
-                chart_model_path=chart_model_path
-        )
-        text_doc_batches = self.chunk_docs(text_docs)
-        combined_docs = text_docs + table_docs + chart_docs
+        text_doc_chunks = self.chunk_docs(text_docs)
+        table_doc_chunks = self.chunk_docs(table_docs)
+        chart_doc_chunks = self.chunk_docs(chart_docs)
+        combined_docs = text_doc_chunks + table_doc_chunks + chart_doc_chunks
         self.get_search_index(
-            upload_docs=combined_docs, 
+            upload_docs=combined_docs,
             upload_docs_in_batches=upload_docs_in_batches,
             batch_size=batch_size,
             overwrite_index=overwrite_index,
@@ -719,7 +727,7 @@ class IngestionPipeline:
             ContainerClient: The client for the blob storage container.
         """
         self.logger.info(
-                "Getting Azure Blob Storage container client '{0}' from account '{1}'".format(
+                "Getting Azure Blob Storage container client '{0}' from account '{1}'...".format(
                     self.azure_storage_container_name,
                     self.azure_storage_container_account,
                 ))
@@ -740,7 +748,7 @@ class IngestionPipeline:
         Returns:
             SearchIndexClient: The client for the Azure AI Search service.
         """
-        self.logger.info("Getting Azure AI Search client from service '{0}'..".format(
+        self.logger.info("Getting Azure AI Search client from service '{0}'...".format(
             self.azure_search_service_name
             ))
         azure_search_endpoint = "https://" + self.azure_search_service_name \
@@ -759,7 +767,7 @@ class IngestionPipeline:
             AzureOpenAIEmbeddings: The model used for generating vector embeddings.
         """
         self.logger.info(
-            "Getting OpenAI embedding model '{0}' from endpoint {1}..".format(
+            "Getting OpenAI embedding model '{0}' from endpoint {1}".format(
                 self.azure_openai_embedding_model,
                 self.azure_openai_endpoint,
             ))
@@ -796,54 +804,54 @@ class IngestionPipeline:
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        "--local_folder",
-        type=str,
-        help="Local folder containing PDFs",
-        default=None,
+        "--extract_pdfs_from_blob",
+        action='store_true',
+        help="Whether to extract PDFs from Azure Blob storage and save to local disk (default: True)",
+        default=True,
     )
     parser.add_argument(
-        "--process_charts",
-        type=str,
-        help="Whether to process and index extracted chart figures",
+        "--convert_chart_to_table",
+        help="Whether to convert chart figures to tabular form (default: False)",
+        action='store_true',
         default=False,
     )
     parser.add_argument(
-        "--chart_model",
+        "--chart_to_table_model",
         type=str,
-        help="Chart model used to convert the chart to tabular form",
+        help="Chart model used to convert the chart to tabular form (default: 'deplot')",
         default='deplot',
     )
     parser.add_argument(
-        "--chart_model_path",
+        "--chart_to_table_model_path",
         type=str,
-        help="Chart model path",
+        help="Chart to table model path (default: None)",
         default='',
     )
     parser.add_argument(
         "--upload_docs_in_batches",
-        type=bool,
-        help="Whether to upload Documents to index in batches",
+        help="Whether to upload Documents to index in batches (default: True)",
+        action='store_true',
         default=True,
     )
     parser.add_argument(
         "--batch_size",
         type=int,
-        help="Batch size to use when uploading Documents to index",
+        help="Batch size to use when uploading Documents to index (default: 50)",
         default=50,
     )
     parser.add_argument(
         "--overwrite_index",
-        type=bool,
-        help="Whether to overwrite index if it exists",
+        help="Whether to overwrite search index if it exists (default: False)",
+        action='store_true',
         default=False,
     )
     args = parser.parse_args()
     ingestion_pipeline = IngestionPipeline()
     ingestion_pipeline.ingest_pdfs(
-        pdf_file=args.pdf_file, 
-        process_charts=args.process_charts,
-        chart_model=args.chart_model,
-        chart_model_path=args.chart_model_path,
+        extract_pdfs_from_blob=args.extract_pdfs_from_blob, 
+        convert_chart_to_table=args.convert_chart_to_table,
+        chart_to_table_model=args.chart_to_table_model,
+        chart_to_table_model_path=args.chart_to_table_model_path,
         upload_docs_in_batches=args.upload_docs_in_batches,
         batch_size=args.batch_size,
         overwrite_index=args.overwrite_index,
