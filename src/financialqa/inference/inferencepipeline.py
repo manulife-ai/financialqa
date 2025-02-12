@@ -22,18 +22,17 @@ logger = logging.getLogger(__name__)
 
 """
 To-do's:
-- See https://github.com/langchain-ai/langchain/issues/27511 for program termination
-    error issue with AzureSearch
+- See https://github.com/langchain-ai/langchain/issues/27511 for program 
+    termination error issue with AzureSearch
 """
 
 class InferencePipeline:
-    """
-    Ask questions to an LLM about multi-structured PDF contents retrieved from an index.
+    """Query an LLM about PDF contents retrived from an index.
     
     Attributes:
         chat_model (AzureChatOpenAI): The LLM used for completions.
-        embedding_model (AzureOpenAIEmbeddings): The model used for generating 
-            vector embeddings.
+        embedding_model (AzureOpenAIEmbeddings): The model used for 
+            generating vector embeddings.
         ai_search_index (AzureSearch): The Azure AI Search index.
     """
 
@@ -84,10 +83,12 @@ class InferencePipeline:
         Inputs:
             query (str): Query used to search against index.
             company_name (str): Company name used to filter index.
-            top_k (int): Top number of Documents to retrieve from index (default is 3).
+            top_k (int): Top number of Documents to retrieve from index 
+                (default is 3).
         
         Outputs:
-            retrieved_chunks (list): Retrieved Document objects from index.
+            retrieved_chunks (list): Retrieved Document objects of 
+                multi-structured PDF contents from index.
         """
         filters = ''
         if company_name:
@@ -100,20 +101,21 @@ class InferencePipeline:
         )
         return retrieved_chunks
     
-    def invoke_model(
+    def invoke_rag_pipeline(
             self, 
             query,
             company_name='',
             top_k=3,
         ):
         """
-        Invoke the RAG model based on a given query, optional company name filter, 
-        and top-k Documents to return from the index.
+        Invoke the RAG model based on a given query, optional company 
+        name filter, and top-k Documents to return from the index.
         
         Inputs:
             query (str): Query for RAG pipeline.
             company_name (str): Company name used to filter index.
-            top_k (int): Top number of Documents to retrieve from index (default is 3).
+            top_k (int): Top number of Documents to retrieve from index 
+                (default is 3).
         
         Outputs:
             None
@@ -142,7 +144,7 @@ class InferencePipeline:
             AzureChatOpenAI: Azure OpenAI chat model.
         """
         logger.info(
-            "Getting Azure OpenAI completion model '{0}' from endpoint {1}..".format(
+            "Getting Azure OpenAI completion model '{0}' from endpoint {1}...".format(
                 self.azure_openai_completion_model,
                 self.azure_openai_endpoint,
             ))
@@ -163,10 +165,11 @@ class InferencePipeline:
         Instantiate Azure OpenAI embedding model.
 
         Returns:
-            AzureOpenAIEmbeddings: The model used for generating vector embeddings.
+            AzureOpenAIEmbeddings: The model used for generating vector 
+                embeddings.
         """
         logger.info(
-            "Getting Azure OpenAI embedding model '{0}' from endpoint {1}..".format(
+            "Getting Azure OpenAI embedding model '{0}' from endpoint {1}...".format(
                 self.azure_openai_embedding_model,
                 self.azure_openai_endpoint,
             ))
@@ -185,7 +188,7 @@ class InferencePipeline:
         Returns:
             AzureSearch: Azure AI Search index object.
         """
-        logger.info("Getting Azure AI Search index '{0}' from service '{1}'..".format(
+        logger.info("Getting Azure AI Search index '{0}' from service '{1}'...".format(
             self.azure_search_index_name,
             self.azure_search_service_name,
             ))
@@ -222,23 +225,24 @@ if __name__ == '__main__':
     parser.add_argument(
         "--query",
         type=str,
-        help="Query for the Financial QA model",
+        help="Query for the RAG pipeline",
+        required=True,
     )
     parser.add_argument(
         "--company_name",
         type=str,
-        help="Company name for filtering the index",
-        default=3,
+        help="Company name used to filter the index (default: None)",
+        default='',
     )
     parser.add_argument(
         "--top_k",
         type=int,
-        help="Top number of Documents based on query to retrieve from index",
+        help="Top number of Documents to retrieve from index based on query (default: 3)",
         default=3,
     )
     args = parser.parse_args()
     inferencepipeline = InferencePipeline()
-    inferencepipeline.invoke_model(
+    inferencepipeline.invoke_rag_pipeline(
         query=args.query,
         company_name=args.company_name,
         top_k=args.top_k
