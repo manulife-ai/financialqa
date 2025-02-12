@@ -27,7 +27,7 @@ azure_docintel_endpoint = os.getenv('AZURE_DOCINTEL_ENDPOINT')
 azure_docintel_version = os.getenv('AZURE_DOCINTEL_VERSION')
 
 
-def extract_pdf_contents(pdfs_folder):
+def extract_pdf_contents(pdfs_folder: str) -> dict[str, dict]:
     """
     Extract PDF contents using Azure Document Intelligence.
 
@@ -68,15 +68,17 @@ def extract_pdf_contents(pdfs_folder):
     return pdf_contents_dict
 
 
-def page_pdf_contents(pdf_contents_dict):
+def page_pdf_contents(pdf_contents_dict: dict[str, dict]) -> dict:
     """
     Create a dictionary of extracted PDF contents per page of each PDF.
     
     Args:
-        pdf_contents_dict (dict): Dictionary containing extracted PDF contents.
+        pdf_contents_dict (dict): Dictionary containing extracted PDF 
+            contents.
 
     Returns:
-        dict: Dictionary containing extracted PDF contents per page of each PDF.
+        dict: Dictionary containing extracted PDF contents per page of 
+            each PDF.
     """
     pdf_pages_dict = dict()
     for pdf_name, pdf_items in pdf_contents_dict.items():

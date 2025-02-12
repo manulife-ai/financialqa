@@ -5,6 +5,7 @@ import argparse
 from langchain_openai import AzureChatOpenAI
 from langchain_openai import AzureOpenAIEmbeddings, OpenAIEmbeddings
 from langchain_community.vectorstores.azuresearch import AzureSearch
+from langchain.docstore.document import Document
 
 from azure.core.credentials import AzureKeyCredential
 from azure.search.documents.indexes import SearchIndexClient
@@ -42,13 +43,17 @@ class InferencePipeline:
         self.embedding_model = self._get_embedding_model()
         self.ai_search_index = self._get_ai_search_index()
 
-    def invoke_llm(self, query, retrieved_chunks): 
+    def invoke_llm(
+            self,
+            query: str,
+            retrieved_chunks: list[Document],
+        ) -> str:
         """
         Invoke the LLM with a given query and retrieved context.
         
         Inputs:
             query (str): Query for RAG pipeline.
-            retrieved_chunks (list): Retrieved context from index.
+            retrieved_chunks (list): Retrieved list of Documents from index.
 
         Outputs:
             llm_response (str): Response from LLM.
@@ -72,11 +77,11 @@ class InferencePipeline:
         return llm_response
 
     def query_index(
-            self, 
-            query, 
-            company_name='',
-            top_k=3, 
-        ):
+            self,
+            query: str,
+            company_name: str = '',
+            top_k: int = 3,
+        ) -> list[Document]:
         """
         Query the index for Documents based on a similarity search.
         
@@ -87,8 +92,8 @@ class InferencePipeline:
                 (default is 3).
         
         Outputs:
-            retrieved_chunks (list): Retrieved Document objects of 
-                multi-structured PDF contents from index.
+            retrieved_chunks (list): Retrieved list of Document objects 
+                of multi-structured PDF contents from index.
         """
         filters = ''
         if company_name:
@@ -102,11 +107,11 @@ class InferencePipeline:
         return retrieved_chunks
     
     def invoke_rag_pipeline(
-            self, 
-            query,
-            company_name='',
-            top_k=3,
-        ):
+            self,
+            query: str,
+            company_name: str = '',
+            top_k: int = 3,
+        ) -> None:
         """
         Invoke the RAG model based on a given query, optional company 
         name filter, and top-k Documents to return from the index.
@@ -136,7 +141,7 @@ class InferencePipeline:
                 llm_response.get('content'),
         ))
         
-    def _get_azure_chat_model(self):
+    def _get_azure_chat_model(self) -> AzureChatOpenAI:
         """
         Instantiate Azure OpenAI chat model.
         
@@ -160,7 +165,7 @@ class InferencePipeline:
         )
         return chat_model
 
-    def _get_embedding_model(self):
+    def _get_embedding_model(self) -> AzureOpenAIEmbeddings:
         """
         Instantiate Azure OpenAI embedding model.
 
@@ -181,7 +186,7 @@ class InferencePipeline:
         )
         return embeddings
 
-    def _get_ai_search_index(self):
+    def _get_ai_search_index(self) -> AzureSearch:
         """
         Instantiate Azure AI Search index.
 
@@ -200,7 +205,7 @@ class InferencePipeline:
         )
         return ai_search_index
 
-    def _load_api_vars(self):
+    def _load_api_vars(self) -> None:
         """
         Load API variables from environment variables.
 
