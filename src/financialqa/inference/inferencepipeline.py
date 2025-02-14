@@ -139,7 +139,7 @@ class InferencePipeline:
         llm_response = self.invoke_llm(
             query, 
             retrieved_chunks
-        ).dict()
+        ).model_dump()
         logger.info(
             "{0} response: {1}".format(
                 os.getenv('AZURE_OPENAI_COMPLETION_MODEL'),
