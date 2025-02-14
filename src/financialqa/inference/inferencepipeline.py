@@ -13,8 +13,13 @@ from azure.search.documents.indexes import SearchIndexClient
 from dotenv import load_dotenv
 load_dotenv(override=True)
 
+logger = logging.getLogger(
+    'azure.core.pipeline.policies.http_logging_policy'
+)  
+logger.setLevel(logging.CRITICAL)
+httpx_logger = logging.getLogger('httpx')  
+httpx_logger.setLevel(logging.WARNING)  # to suppress Azure INFO logs 
 logging.basicConfig(    
-    # filename=logfile,    
     level=logging.INFO,    
     format="%(asctime)s %(levelname)s %(name)s line %(lineno)d  %(message)s",    
     datefmt="%H:%M:%S"
