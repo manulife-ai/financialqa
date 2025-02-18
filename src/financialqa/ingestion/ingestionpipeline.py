@@ -1,6 +1,4 @@
 import os
-import sys
-import json
 import time
 import copy
 import logging
@@ -10,15 +8,16 @@ from PIL import Image
 from PyPDF2 import PdfReader, PdfWriter
 from pdf2image import convert_from_path
 from langchain.docstore.document import Document
-from langchain_openai import AzureOpenAIEmbeddings, OpenAIEmbeddings
+from langchain_openai import AzureOpenAIEmbeddings
 from langchain_community.vectorstores.azuresearch import AzureSearch
 from langchain.text_splitter import TokenTextSplitter, CharacterTextSplitter
 
 from transformers import Pix2StructProcessor, Pix2StructForConditionalGeneration
-from src.financialqa.ingestion.models.model_base_decoder import infer_base_decoder
+# from src.financialqa.ingestion.models.model_base_decoder import infer_base_decoder
 
+from azure.storage.blob import BlobServiceClient
+from azure.identity import DefaultAzureCredential
 from azure.core.credentials import AzureKeyCredential
-from azure.storage.blob import BlobServiceClient, BlobClient, ContainerClient
 from azure.search.documents.indexes import SearchIndexClient
 from azure.search.documents.indexes.models import (
     SearchableField,
@@ -38,9 +37,6 @@ load_dotenv(override=True)
 
 from .helper import preprocess_text
 from .parser import extract_pdf_contents, page_pdf_contents
-
-import warnings  # not recommended, to suppress langchain openai error
-warnings.filterwarnings("ignore")
 
 '''
 To-do's:
