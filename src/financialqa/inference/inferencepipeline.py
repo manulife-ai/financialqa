@@ -183,11 +183,14 @@ class InferencePipeline:
                 self.azure_openai_embedding_model,
                 self.azure_openai_endpoint,
             ))
+        ## when running locally make sure OPENAI_API_BASE is not set, in order not to conflict with azure_endpoint parameter
+        if "OPENAI_API_BASE" in os.environ:
+            del os.environ["OPENAI_API_BASE"]
         embeddings = AzureOpenAIEmbeddings(
             deployment=self.azure_openai_embedding_model,
             azure_endpoint=self.azure_openai_endpoint,
             openai_api_version=self.azure_openai_version,
-            openai_api_key=self.azure_openai_key,
+            api_key=self.azure_openai_key,
         )
         return embeddings
 
