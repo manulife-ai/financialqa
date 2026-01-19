@@ -1,6 +1,9 @@
 # Multi-structured Financial Report Question-Answering
 Extract text, tables, and figures from (financial report) PDFs and upload them into an (Azure AI Search) index for (financial data) question-answering (QA) with a large language model (LLM) in a Retrieval-Augmented Generation (RAG) framework.
 
+## Reference
+This repository is based on the methods and findings from the following paper which was accepted to the European Conference on Information Retrieval (ECIR) 2026 Industry Track: [**On the Comprehensibility of Multi-structured Financial Documents using LLMs and Pre-processing Tools**](https://arxiv.org/abs/2506.05182). For a detailed overview of the project, please refer to the paper.
+
 ## Features
 * Extraction of text, tables, and figures from PDFs stored in an Azure Blob Storage container using Azure Document Intelligence
 * Conversion of chart figures to underlying tabular form using a chart-to-table model
