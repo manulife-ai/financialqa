@@ -21,7 +21,7 @@ Extract text, tables, and figures from (financial report) PDFs and upload them i
 ## Usage
 First, clone and navigate to the repository:
 ```bash
-git clone https://github.com/manulife-gft/FinancialQA
+git clone https://github.com/manulife-ai/FinancialQA
 cd FinancialQA/
 ```
 Then, install the package locally using ```pip```:
