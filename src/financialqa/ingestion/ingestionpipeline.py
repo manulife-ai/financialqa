@@ -13,7 +13,12 @@ from langchain_community.vectorstores.azuresearch import AzureSearch
 from langchain.text_splitter import TokenTextSplitter, CharacterTextSplitter
 
 from transformers import Pix2StructProcessor, Pix2StructForConditionalGeneration
-# from src.financialqa.ingestion.models.model_base_decoder import infer_base_decoder
+try:
+    from src.financialqa.ingestion.models.model_base_decoder import infer_base_decoder
+except ImportError:
+    infer_base_decoder = None
+    import logging
+    logging.warning("ChartVLM's infer_base_decoder is not available in the repository.")
 
 from azure.storage.blob import BlobServiceClient
 from azure.identity import DefaultAzureCredential
@@ -233,19 +238,22 @@ class IngestionPipeline:
             image_path: str,
         ) -> str:
         """
-        Generate ChartVLM output based on model and image path.
+        Generate ChartVLM output based on model and image path. Falls back to DePlot if ChartVLM is unavailable.
         
         Args:
             model_path (str): Path to ChartVLM model.
             image_path (str): Path to image file.
         
         Returns:
-            str: ChartVLM output.
+            str: ChartVLM output or DePlot output if ChartVLM is unavailable.
         """
         self.logger.info(
             f'Generating ChartVLM output for figure with image path {image_path}...'
         )
         img = Image.open(image_path).convert("RGB")
+        if infer_base_decoder is None:
+            self.logger.warning("infer_base_decoder not available. Falling back to DePlot for chart-to-table conversion.")
+            return self.generate_deplot_output(image_path)
         chartvlm_decoder_output = infer_base_decoder(
             img, 
             model_path, 
