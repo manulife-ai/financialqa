@@ -621,8 +621,8 @@ class IngestionPipeline:
                                     len(doc_batch), 
                                     self.azure_search_index_name
                                 ))
-                            ai_search_index.add_documents(documents=upload_docs)
-                        except: 
+                            ai_search_index.add_documents(documents=doc_batch)
+                        except:
                             self.logger.info("Unable to upload batch of {0} Documents to index '{1}'. Trying again".\
                                 format(
                                     len(doc_batch), 
