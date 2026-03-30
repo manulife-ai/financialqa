@@ -9,10 +9,6 @@ from azure.core.credentials import AzureKeyCredential
 from azure.ai.documentintelligence import DocumentIntelligenceClient
 from azure.ai.documentintelligence.models import AnalyzeResult, DocumentAnalysisFeature
 
-"""
-To-do's:
-    - Fix improper nested column headers
-"""
 
 logging.basicConfig(
     # filename=logfile,
@@ -37,11 +33,15 @@ def extract_pdf_contents(pdfs_folder: str) -> dict[str, dict]:
     Returns:
         dict: Dictionary containing extracted PDF contents. 
     """
-    document_intelligence_client = DocumentIntelligenceClient(
-        endpoint=azure_docintel_endpoint,
-        credential=AzureKeyCredential(azure_docintel_key),
-        version=azure_docintel_version,
-    )
+    try:
+        document_intelligence_client = DocumentIntelligenceClient(
+            endpoint=azure_docintel_endpoint,
+            credential=AzureKeyCredential(azure_docintel_key),
+            version=azure_docintel_version,
+        )
+    except Exception as e:
+        logger.error(f"Failed to instantiate DocumentIntelligenceClient: {e}")
+        raise RuntimeError(f"DocumentIntelligenceClient initialization failed: {e}")
     pdf_contents_dict = {}
     pdf_paths = [os.path.join(pdfs_folder, pdf) for pdf in os.listdir(pdfs_folder)]
     for pdf_path in pdf_paths:

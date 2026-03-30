@@ -153,22 +153,26 @@ class InferencePipeline:
         Returns:
             AzureChatOpenAI: Azure OpenAI chat model.
         """
-        logger.info(
-            "Getting Azure OpenAI completion model '{0}' from endpoint {1}...".format(
-                self.azure_openai_completion_model,
-                self.azure_openai_endpoint,
-            ))
-        chat_model = AzureChatOpenAI(
-            azure_deployment=self.azure_openai_completion_model,
-            azure_endpoint=self.azure_openai_endpoint,
-            openai_api_version=self.azure_openai_version,
-            openai_api_key=self.azure_openai_key,
-            temperature=0,
-            max_tokens=None,
-            timeout=None,
-            max_retries=2,
-        )
-        return chat_model
+        try:
+            logger.info(
+                "Getting Azure OpenAI completion model '{0}' from endpoint {1}...".format(
+                    self.azure_openai_completion_model,
+                    self.azure_openai_endpoint,
+                ))
+            chat_model = AzureChatOpenAI(
+                azure_deployment=self.azure_openai_completion_model,
+                azure_endpoint=self.azure_openai_endpoint,
+                openai_api_version=self.azure_openai_version,
+                openai_api_key=self.azure_openai_key,
+                temperature=0,
+                max_tokens=None,
+                timeout=None,
+                max_retries=2,
+            )
+            return chat_model
+        except Exception as e:
+            logger.error(f"Failed to instantiate Azure OpenAI chat model: {e}")
+            raise RuntimeError(f"Azure OpenAI chat model initialization failed: {e}")
 
     def _get_embedding_model(self) -> AzureOpenAIEmbeddings:
         """
@@ -178,18 +182,22 @@ class InferencePipeline:
             AzureOpenAIEmbeddings: The model used for generating vector 
                 embeddings.
         """
-        logger.info(
-            "Getting Azure OpenAI embedding model '{0}' from endpoint {1}...".format(
-                self.azure_openai_embedding_model,
-                self.azure_openai_endpoint,
-            ))
-        embeddings = AzureOpenAIEmbeddings(
-            deployment=self.azure_openai_embedding_model,
-            azure_endpoint=self.azure_openai_endpoint,
-            openai_api_version=self.azure_openai_version,
-            openai_api_key=self.azure_openai_key,
-        )
-        return embeddings
+        try:
+            logger.info(
+                "Getting Azure OpenAI embedding model '{0}' from endpoint {1}...".format(
+                    self.azure_openai_embedding_model,
+                    self.azure_openai_endpoint,
+                ))
+            embeddings = AzureOpenAIEmbeddings(
+                deployment=self.azure_openai_embedding_model,
+                azure_endpoint=self.azure_openai_endpoint,
+                openai_api_version=self.azure_openai_version,
+                openai_api_key=self.azure_openai_key,
+            )
+            return embeddings
+        except Exception as e:
+            logger.error(f"Failed to instantiate Azure OpenAI embedding model: {e}")
+            raise RuntimeError(f"Azure OpenAI embedding model initialization failed: {e}")
 
     def _get_ai_search_index(self) -> AzureSearch:
         """
@@ -198,17 +206,21 @@ class InferencePipeline:
         Returns:
             AzureSearch: Azure AI Search index object.
         """
-        logger.info("Getting Azure AI Search index '{0}' from service '{1}'...".format(
-            self.azure_search_index_name,
-            self.azure_search_service_name,
+        try:
+            logger.info("Getting Azure AI Search index '{0}' from service '{1}'...".format(
+                self.azure_search_index_name,
+                self.azure_search_service_name,
             ))
-        ai_search_index = AzureSearch(
-            azure_search_endpoint=self.azure_search_endpoint,
-            azure_search_key=self.azure_search_key,
-            index_name=self.azure_search_index_name,
-            embedding_function=self.embedding_model.embed_query,
-        )
-        return ai_search_index
+            ai_search_index = AzureSearch(
+                azure_search_endpoint=self.azure_search_endpoint,
+                azure_search_key=self.azure_search_key,
+                index_name=self.azure_search_index_name,
+                embedding_function=self.embedding_model.embed_query,
+            )
+            return ai_search_index
+        except Exception as e:
+            logger.error(f"Failed to instantiate Azure AI Search index: {e}")
+            raise RuntimeError(f"Azure AI Search index initialization failed: {e}")
 
     def _load_api_vars(self) -> None:
         """

@@ -605,15 +605,20 @@ class IngestionPipeline:
                     self.search_client.delete_index(self.azure_search_index_name)
                 else:
                     self.logger.info("Did not find index to overwrite")
-            ai_search_index = AzureSearch(
-                azure_search_endpoint=self.azure_search_endpoint,
-                azure_search_key=self.azure_search_key,
-                index_name=self.azure_search_index_name,
-                embedding_function=self.embedding_model.embed_query,
-                fields=fields,
-                additional_search_client_options={"retry_total": 4},
-                vector_search=vector_search,
-            )
+            # Use langchain's AzureSearch for built-in embedding generation
+            try:
+                ai_search_index = AzureSearch(
+                    azure_search_endpoint=self.azure_search_endpoint,
+                    azure_search_key=self.azure_search_key,
+                    index_name=self.azure_search_index_name,
+                    embedding_function=self.embedding_model.embed_query,
+                    fields=fields,
+                    additional_search_client_options={"retry_total": 4},
+                    vector_search=vector_search,
+                )
+            except Exception as e:
+                self.logger.error(f"Failed to instantiate Azure AI Search index: {e}")
+                raise RuntimeError(f"Azure AI Search index initialization failed: {e}")
             if upload_docs is not None:
                 if upload_docs_in_batches:
                     doc_batches = [
@@ -664,7 +669,7 @@ class IngestionPipeline:
                             self.azure_search_index_name, 
                             round(time.time() - t)
                         ))
-        return ai_search_index
+            return ai_search_index
 
     def ingest_pdfs(
             self, 
@@ -738,20 +743,22 @@ class IngestionPipeline:
             ContainerClient: The client for the Azure Blob storage 
                 container.
         """
-        self.logger.info(
+        try:
+            self.logger.info(
                 "Getting Azure Blob Storage container client '{0}' from account '{1}'...".format(
                     self.azure_storage_container_name,
                     self.azure_storage_container_account,
                 ))
-        blob_service_client = \
-            BlobServiceClient.from_connection_string(
+            blob_service_client = BlobServiceClient.from_connection_string(
                 self.azure_storage_connection_string
             )
-        container_client = \
-            blob_service_client.get_container_client(
+            container_client = blob_service_client.get_container_client(
                 self.azure_storage_container_name
             )
-        return container_client
+            return container_client
+        except Exception as e:
+            self.logger.error(f"Failed to instantiate Azure Blob Storage container client: {e}")
+            raise RuntimeError(f"Azure Blob Storage client initialization failed: {e}")
 
     def _get_search_client(self) -> SearchIndexClient:
         """
@@ -761,16 +768,19 @@ class IngestionPipeline:
             SearchIndexClient: The client for the Azure AI Search 
                 service.
         """
-        self.logger.info("Getting Azure AI Search client from service '{0}'...".format(
-            self.azure_search_service_name
+        try:
+            self.logger.info("Getting Azure AI Search client from service '{0}'...".format(
+                self.azure_search_service_name
             ))
-        azure_search_endpoint = "https://" + self.azure_search_service_name \
-                                    + ".search.windows.net"
-        search_client = SearchIndexClient(
-            azure_search_endpoint, 
-            AzureKeyCredential(self.azure_search_key),
-        )
-        return search_client
+            azure_search_endpoint = "https://" + self.azure_search_service_name + ".search.windows.net"
+            search_client = SearchIndexClient(
+                azure_search_endpoint,
+                AzureKeyCredential(self.azure_search_key),
+            )
+            return search_client
+        except Exception as e:
+            self.logger.error(f"Failed to instantiate Azure AI Search client: {e}")
+            raise RuntimeError(f"Azure AI Search client initialization failed: {e}")
 
     def _get_embedding_model(self) -> AzureOpenAIEmbeddings:
         """
@@ -780,18 +790,22 @@ class IngestionPipeline:
             AzureOpenAIEmbeddings: The model used for generating vector 
                 embeddings.
         """
-        self.logger.info(
-            "Getting OpenAI embedding model '{0}' from endpoint {1}".format(
-                self.azure_openai_embedding_model,
-                self.azure_openai_endpoint,
-            ))
-        embeddings = AzureOpenAIEmbeddings(
-            deployment=self.azure_openai_embedding_model,
-            azure_endpoint=self.azure_openai_endpoint,
-            openai_api_version=self.azure_openai_version,
-            openai_api_key=self.azure_openai_key,
-        )
-        return embeddings
+        try:
+            self.logger.info(
+                "Getting OpenAI embedding model '{0}' from endpoint {1}".format(
+                    self.azure_openai_embedding_model,
+                    self.azure_openai_endpoint,
+                ))
+            embeddings = AzureOpenAIEmbeddings(
+                deployment=self.azure_openai_embedding_model,
+                azure_endpoint=self.azure_openai_endpoint,
+                openai_api_version=self.azure_openai_version,
+                openai_api_key=self.azure_openai_key,
+            )
+            return embeddings
+        except Exception as e:
+            self.logger.error(f"Failed to instantiate Azure OpenAI embedding model: {e}")
+            raise RuntimeError(f"Azure OpenAI embedding model initialization failed: {e}")
     
     def _load_api_vars(self) -> None:
         """
